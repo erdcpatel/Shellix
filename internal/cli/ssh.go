@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"shellix/internal/session"
 	"shellix/internal/ssh"
@@ -106,6 +110,33 @@ func NewSSHCmd(app *AppContext) *cobra.Command {
 	sshExecCmd.Flags().StringVar(&targetHostsStr, "hosts", "", "Comma-separated list of host aliases")
 	_ = sshExecCmd.MarkFlagRequired("hosts")
 
-	sshCmd.AddCommand(sshAddCmd, sshListCmd, sshConnectCmd, sshExecCmd)
+	sshTunnelCmd := &cobra.Command{
+		Use:   "tunnel <alias> [localPort:]remoteHost:remotePort",
+		Short: "Forward a local port to a remote server target over SSH",
+		Long: `Open an encrypted local port-forwarding tunnel to a remote Linux/Unix host.
+
+Examples:
+  sx ssh tunnel prod-db 5432:localhost:5432   # Forward local 5432 to remote 5432
+  sx ssh tunnel prod-web 8080:80             # Forward local 8080 to remote 80
+  sx ssh tunnel kafka-node 9092              # Forward local 9092 to remote 9092`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			hp, ok := app.SSHMgr.GetHost(args[0])
+			if !ok {
+				return fmt.Errorf("configured host '%s' not found", args[0])
+			}
+			cfg, err := ssh.ParseTunnelSpec(args[1])
+			if err != nil {
+				return err
+			}
+
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+
+			return ssh.StartTunnel(ctx, hp, cfg)
+		},
+	}
+
+	sshCmd.AddCommand(sshAddCmd, sshListCmd, sshConnectCmd, sshExecCmd, sshTunnelCmd)
 	return sshCmd
 }

@@ -38,11 +38,19 @@ graph TD
 - **Full Path**: For non-read operations or complex porcelain (e.g. interactive rebase, 3-way merge conflict resolution), Shellix transparently forwards arguments directly to the native `git` executable.
 
 ### 3.2 Automation Flow Engine (`internal/flow`)
-- Parses declarative YAML workflows.
-- Evaluates environmental and project context variables (`{{project_root}}`, `{{git.branch}}`, `{{env.NAME}}`).
+- Parses declarative YAML workflows with cycle detection (Kahn's algorithm).
+- Sorts steps topologically based on `depends_on: []` prerequisites.
+- Evaluates conditional gating (`if: ""`) and variable interpolation (`{{project_root}}`, `{{git.branch}}`, `{{steps.<name>.output}}`).
 - Manages timeouts, retries, step failure policies (`abort`, `continue`, `retry`), and sequential/parallel execution.
+- Generates comprehensive, secret-sanitized execution audit logs with `0600` permissions.
 
-### 3.3 Multi-Repo Search Engine (`internal/search`)
+### 3.3 Remote SSH & Port Forwarding (`internal/ssh`)
+- Pure Go SSH manager leveraging `golang.org/x/crypto/ssh`.
+- Enforces strict known-hosts verification with MITM protection and TOFU.
+- Parallel multi-node command execution streaming color-coded outputs.
+- Encrypted local TCP port forwarding tunnels (`ParseTunnelSpec`, `StartTunnel`) for remote database and microservice access.
+
+### 3.4 Multi-Repo Search Engine (`internal/search`)
 - Traverses registered repository trees in parallel using `runtime.NumCPU()` goroutines.
 - Automatically ignores `.git`, `node_modules`, `vendor`, and binary files.
 - Provides regex and literal matching with syntax-highlighted matching lines.

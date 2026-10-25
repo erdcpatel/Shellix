@@ -104,9 +104,25 @@ sx ssh exec --hosts prod-web,prod-db "uptime && df -h"
 
 # Launch interactive remote session
 sx ssh connect prod-web
+
+# Secure local port forwarding tunnel (LocalPort:RemoteHost:RemotePort)
+sx ssh tunnel prod-db 5432:localhost:5432
+sx ssh tunnel prod-web 8080:80
 ```
 
-### 3. Multi-Repo Search
+### 3. System Diagnostics & Rapid Onboarding
+
+```bash
+# Run comprehensive health diagnostics on Git, JDKs, Keyring, and SSH
+sx doctor
+
+# Initialize Shellix environment or generate shell integration
+sx init
+sx init --workspace   # Scaffold .shellix/flows/ in current repo
+eval "$(sx init zsh)" # Instant shell alias setup
+```
+
+### 4. Multi-Repo Search
 
 ```bash
 # Search across registered repos
