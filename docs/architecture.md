@@ -17,25 +17,16 @@ Shellix is built around three core pillars:
 
 ```mermaid
 graph TD
-    CLI["cmd/shellix (Cobra CLI Router)"] --> Core["internal/core (Config, Banner, Lifecycle)"]
+    Main["cmd/shellix/main.go (15-line Bootstrap)"] --> CLI["internal/cli/ (Modular Command Layer)"]
+    CLI --> Core["internal/core (Config, Banner, Security Sanitizer)"]
     
-    CLI --> GitRouter["internal/git (Dual-Engine Git)"]
-    GitRouter --> GoGit["go-git Engine (In-Process, <2ms)"]
-    GitRouter --> NativeGit["Native git Passthrough (Full parity)"]
-    
-    CLI --> FlowEngine["internal/flow (YAML Automation Engine)"]
-    FlowEngine --> StepExecutor["Step Runner (Parallel/Sequential)"]
-    FlowEngine --> Interpolator["Variable Interpolator {{var}}"]
-    
-    CLI --> SearchEngine["internal/search (Cross-Repo Search)"]
-    SearchEngine --> FileWalker["Parallel Worker Pool (goroutines)"]
-    
-    CLI --> Terminal["internal/terminal (PTY / ConPTY Engine)"]
-    Terminal --> UnixPTY["Unix / macOS PTY (creack/pty)"]
-    Terminal --> WindowsPTY["Windows ConPTY / Subprocess"]
-    
-    CLI --> Shortcuts["internal/shortcuts (Bookmarks & Snippets)"]
-    Shortcuts --> Storage["Local JSON/YAML Storage (~/.shellix)"]
+    CLI --> GitCmd["internal/cli/git.go"] --> GitEngine["internal/git (Dual-Engine Git)"]
+    CLI --> FlowCmd["internal/cli/flow.go"] --> FlowEngine["internal/flow (Parallel Automation Engine)"]
+    CLI --> JavaCmd["internal/cli/java.go"] --> JavaEngine["internal/java (Java Toolchain & Builds)"]
+    CLI --> SSHCmd["internal/cli/ssh.go"] --> SSHEngine["internal/ssh (crypto/ssh Multi-Exec)"]
+    CLI --> SearchCmd["internal/cli/search.go"] --> SearchEngine["internal/search (Parallel Search)"]
+    CLI --> ShortcutsCmd["internal/cli/shortcuts.go"] --> ShortcutsEngine["internal/shortcuts (BM & Snippets)"]
+    CLI --> SessionCmd["internal/cli/session.go"] --> SessionEngine["internal/session (Active Tabs & Monitor)"]
 ```
 
 ---

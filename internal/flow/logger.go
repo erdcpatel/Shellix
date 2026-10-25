@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"shellix/internal/core"
 )
 
 // FlowLogger records comprehensive, audit-ready logs for every flow run
@@ -89,6 +91,9 @@ func (fl *FlowLogger) LogStep(step *Step, res ExecutionResult) {
 		parallelStr = "Parallel (Concurrent Worker)"
 	}
 
+	safeCmd := core.GlobalSanitizer.Sanitize(step.Run)
+	safeOutput := core.GlobalSanitizer.Sanitize(res.Output)
+
 	entry := fmt.Sprintf(`--------------------------------------------------------------------------------
 STEP: %s [%s]
 Command    : %s
@@ -99,7 +104,7 @@ Status     : %s
 %s
 --------------
 
-`, step.Name, statusStr, step.Run, parallelStr, res.Duration, statusStr, res.Output)
+`, step.Name, statusStr, safeCmd, parallelStr, res.Duration, statusStr, safeOutput)
 
 	_, _ = fl.LogFile.WriteString(entry)
 }

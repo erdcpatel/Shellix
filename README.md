@@ -128,6 +128,7 @@ sx snip run test
 ## 📚 Documentation Index
 
 - [Architecture Overview](docs/architecture.md)
+- [Security & Privacy Architecture](docs/security.md)
 - [Dual-Engine Git Specification](docs/git-engine.md)
 - [Shellix Flows Automation & Parallel Builds](docs/flows.md)
 - [Java Toolchain & Build Helper](docs/java.md)
