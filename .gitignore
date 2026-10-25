@@ -1,0 +1,26 @@
+# Binaries
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.out
+*.test
+coverage.html
+
+# Local configuration and data
+.shellix/
+vault.enc
+*.local.yaml
+*.local.toml
+
+# OS and Editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
