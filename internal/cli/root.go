@@ -30,6 +30,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewFlowCmd(app),
 		NewJavaCmd(app),
 		NewSSHCmd(app),
+		NewVaultCmd(app),
 		NewSessionCmd(app),
 		NewSearchCmd(app),
 		NewBookmarkCmd(app),

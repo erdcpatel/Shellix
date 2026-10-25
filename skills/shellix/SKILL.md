@@ -59,15 +59,40 @@ steps:
     run: echo "All done!"
 ```
 
-### 3. Java Toolchain & Builds
+### 3. Java Toolchain & Multi-Version Manager
 
 | Command | Purpose |
 |---|---|
-| `sx j env` or `sx java env` | Detects JDK version, compiler, JAVA_HOME, and build system |
-| `sx j build [args...]` | Automatically invokes Maven/Gradle or wrapper |
+| `sx j ls` or `sx java list` | Discovers and lists all installed JDKs across the machine |
+| `sx j use <version>` | Resolves matching JDK and outputs activation exports |
+| `eval $(sx j use <version> -e)` | Activates the chosen Java version in the current shell |
+| `sx j shell <version>` | Spawns a subshell configured with that JDK |
+| `sx j env` | Inspects current Java runtime, compiler, and project build file |
+| `sx j build [args...]` | Builds project with Maven or Gradle wrapper automatically |
 | `sx j run <file.java>` | Executes a single Java source file directly |
 
-### 4. SSH Server Management & Multi-Exec
+### 4. Native OS Credential Manager (Vault)
+
+Uses Windows Credential Manager (`wincred`) on Windows and macOS Keychain on macOS.
+
+```bash
+# Check provider info
+sx vault info
+
+# Store a secret
+sx vault set api_token "secret_val"
+
+# Retrieve a secret
+sx vault get api_token
+
+# List stored keys
+sx vault list
+
+# Delete a secret
+sx vault rm api_token
+```
+
+### 5. SSH Server Management & Multi-Exec
 
 ```bash
 # Configure host profile

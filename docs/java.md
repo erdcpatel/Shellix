@@ -1,51 +1,73 @@
-# Java Toolchain & Build Integration
+# Java Toolchain & Multi-Version Manager
 
-Shellix provides native Java environment discovery and build automation without forcing you to memorize different wrapper commands between projects.
+Shellix provides built-in Java environment discovery, build automation, and **multi-JDK switching** across installed runtimes without requiring third-party plugins.
 
 ---
 
 ## 1. Features
 
-- **Automated JDK Discovery**: Identifies runtime version, compiler version (`javac`), and `JAVA_HOME`.
-- **Build System Detection**: Scans the project root for `pom.xml` (Maven) or `build.gradle` / `build.gradle.kts` (Gradle).
-- **Wrapper Auto-Resolution**: Prefers local wrappers (`./mvnw` or `./gradlew`) when present; falls back to system installations seamlessly.
-- **Single-Source Execution**: Directly compiles and runs single `.java` files (Java 11+) via `sx java run`.
+- **Multi-JDK Version Discovery**: Scans macOS `/Library/Java/JavaVirtualMachines/`, SDKMAN (`~/.sdkman/candidates/java/`), Linux `/usr/lib/jvm/`, and Windows `Program Files` for all installed JDKs.
+- **Instant Version Switching**: Switch between Java 8, 11, 17, 21, 25, or vendor flavors (Adoptium, Corretto, Zulu, Oracle) with a single command.
+- **Subshell Isolation**: Launch a clean subshell with a target JDK active (`sx j shell 19`) without changing the global system configuration.
+- **Automated Build Resolution**: Detects `pom.xml` (Maven) or `build.gradle` (Gradle) and prefers local wrappers (`./mvnw` or `./gradlew`) automatically.
+- **Single-Source Execution**: Directly compile and execute standalone `.java` files via `sx java run`.
 
 ---
 
-## 2. Commands
+## 2. Multi-Version Management Commands
 
 ```bash
-# Inspect the active Java runtime, compiler, and project build setup
-sx java env
+# List all discovered Java JDKs on the machine (with active version marked)
+sx java list
 # or alias
-sx j env
+sx j ls
 
-# Trigger automated build (runs ./mvnw clean compile or ./gradlew build)
-sx j build
+# Select a version and get export commands
+sx j use 19
 
-# Pass custom goals/flags to the underlying build tool
-sx j build clean test -DskipTests
+# Activate in current shell session immediately:
+eval $(sx j use 19 -e)
 
-# Run a standalone Java file directly
-sx j run App.java arg1 arg2
+# Launch an interactive subshell configured with that JDK:
+sx j shell 19
 ```
 
 ---
 
-## 3. Parallel Java Builds in Shellix Flows
+## 3. Build & Run Commands
 
-In multi-module or full-stack architectures, you can build your Java services in parallel with other frontend or Go modules:
+```bash
+# Inspect current Java runtime and active project build tool
+sx j env
+
+# Trigger automated build using Maven or Gradle
+sx j build
+
+# Pass custom goals to the build tool
+sx j build clean package -DskipTests
+
+# Run a single Java file directly (Java 11+)
+sx j run App.java
+```
+
+---
+
+## 4. Multi-Version Builds in Workflows
+
+You can target different Java versions for different steps in parallel:
 
 ```yaml
-name: parallel-build-pipeline
+name: cross-version-build
 steps:
-  - name: build-backend-api
-    run: sx j build -DskipTests
+  - name: build-legacy-service
+    run: |
+      eval $(sx j use 11 -e)
+      ./mvnw clean compile
     parallel: true
 
-  - name: build-frontend-client
-    run: npm run build
+  - name: build-modern-service
+    run: |
+      eval $(sx j use 21 -e)
+      ./gradlew build
     parallel: true
 ```
-Both steps will execute concurrently, halving your local build time.

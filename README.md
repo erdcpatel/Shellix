@@ -43,11 +43,15 @@ Run declarative pipelines with parallel step execution and audit logging:
 Run Java and Go builds concurrently in a single flow:
 ![Parallel Builds](docs/images/07_shellix_parallel_builds.png)
 
-### 4. Java Toolchain & Environment Discovery
-Automated JDK discovery, wrapper detection, and single-file execution:
-![Java Toolchain](docs/images/06_shellix_java_env.png)
+### 4. Java Multi-Version Discovery & Switching
+Discover all installed JDKs (Adoptium, Corretto, Temurin, Homebrew) and switch seamlessly:
+![Java Version Manager](docs/images/09_shellix_java_list.png)
 
-### 5. Multi-Repo Parallel Search
+### 5. Native OS Credential Manager (Vault)
+Zero-leak secrets backed by Windows Credential Manager and macOS Keychain:
+![Vault](docs/images/10_shellix_vault_info.png)
+
+### 6. Multi-Repo Parallel Search
 Search across multiple codebases with syntax-highlighted matching lines:
 ![Search Engine](docs/images/03_shellix_search.png)
 
@@ -131,7 +135,8 @@ sx snip run test
 - [Security & Privacy Architecture](docs/security.md)
 - [Dual-Engine Git Specification](docs/git-engine.md)
 - [Shellix Flows Automation & Parallel Builds](docs/flows.md)
-- [Java Toolchain & Build Helper](docs/java.md)
+- [Java Toolchain & Multi-Version Manager](docs/java.md)
+- [Native OS Credential Manager (Vault)](docs/vault.md)
 - [SSH Multi-Server Manager](docs/ssh.md)
 - [Multi-Repo Search Engine](docs/search.md)
 - [Developer Shortcuts (Bookmarks & Snippets)](docs/shortcuts.md)
