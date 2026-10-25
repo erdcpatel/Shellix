@@ -54,10 +54,14 @@ graph TD
 - Parallel multi-node command execution streaming color-coded outputs.
 - Encrypted local TCP port forwarding tunnels (`ParseTunnelSpec`, `StartTunnel`) for remote database and microservice access.
 
-### 3.4 Multi-Repo Search Engine (`internal/search`)
-- Traverses registered repository trees in parallel using `runtime.NumCPU()` goroutines.
-- Automatically ignores `.git`, `node_modules`, `vendor`, and binary files.
-- Provides regex and literal matching with syntax-highlighted matching lines.
+### 3.4 High-Throughput Folder & Code Search Engine (`internal/search`)
+- Traverses hundreds of checked-out project folders in parallel using `runtime.NumCPU() * 2` worker goroutines.
+- Purely local filesystem operation: zero network or external Git dependencies.
+- Automatically ignores noise directories (`.git`, `node_modules`, `vendor`, `build`, `target`, `bin`, `dist`) and skips binary assets via null-byte inspection.
+- Top-level directory rollup summary aggregation (`--by-dir`), calculating folder hit counts, unique file matches, and duration.
+- Surrounding context line extraction (`-C`, `-A`, `-B`) with GNU grep-style dimming and match highlighting.
+- Script-ready listing modes (`--dirs-only`, `--files-only`, `--count`) for fast shell piping.
+- Multi-format audit report generation (`WriteReportToFile`) supporting Markdown task checklists (`.md`), hierarchical JSON (`.json`), and RFC 4180 CSV (`.csv`).
 
 ### 3.4 Terminal Engine (`internal/terminal`)
 - Unix/macOS: Allocates pseudo-terminals via `creack/pty`, hooks terminal raw mode, and forwards window resize signals (`SIGWINCH`).

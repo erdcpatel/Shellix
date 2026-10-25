@@ -150,6 +150,10 @@ Interactive keyboard-driven tree browser for nested payloads with real-time fuzz
 Preview DAG execution waves, parameter overrides (`--set key=val`), and step dependencies without running side effects. Export Mermaid flowcharts (`--mermaid`), guard production deployments with interactive approval gates (`prompt:`), preserve build artifacts in `~/.shellix/artifacts/`, and receive native desktop alerts (`notify:`) on Windows BalloonTip/Toast and macOS:
 ![Workflow Execution Plan](docs/images/31_shellix_flow_plan.png)
 
+### 26. Pure-Local Folder Search, Directory Rollup & Audit Reports (`sx search --by-dir --report`)
+Blazing-fast multi-threaded search across hundreds of checked-out folders without network or Git dependencies. Generates top-level directory rollup summary tables, surrounding context lines (`-C`), extension filters (`--ext`), script-friendly directory listing (`--dirs-only`), and automated Markdown checklist, JSON, and CSV reports:
+![Directory Search Report](docs/images/32_shellix_search_report.png)
+
 ---
 
 ## 🚀 Key Features
@@ -160,8 +164,9 @@ Preview DAG execution waves, parameter overrides (`--set key=val`), and step dep
 2. **Shellix Flows (Automation Engine)**:
    - Declarative YAML workflows to automate builds, tests, releases, and local pipelines (pure local Go compiler, Java Maven/Gradle, Git, and test runners—zero Docker required).
    - Support for sequential and parallel execution waves, dependency DAGs (`depends_on`), conditional step execution (`if:`), timeouts with exponential backoff, parameterization (`params` & `--set`), interactive approval gates (`prompt:`), artifact preservation (`artifacts:` & `sx flow artifacts`), dry-run execution blueprinting (`sx flow plan`), Mermaid architecture exports (`--mermaid`), and desktop/webhook notifications (`notify:`).
-3. **Multi-Repo Intelligent Search**:
-   - High-throughput parallel file tree walking and regex/literal searching across dozens of registered repositories simultaneously.
+3. **High-Throughput Folder & Code Search**:
+   - High-throughput parallel file tree walking and regex/literal searching across hundreds of local project folders simultaneously.
+   - Folder rollup summary tables (`--by-dir`), surrounding context lines (`-C`), file filtering (`--ext`, `--exclude`), listing modes (`--dirs-only`, `--files-only`), and export reports (`--report audit.md|json|csv`).
 4. **Developer Productivity Shortcuts**:
    - Path bookmarking (`sx bm`) and command snippet management (`sx snip`).
 5. **Interactive TUI**:

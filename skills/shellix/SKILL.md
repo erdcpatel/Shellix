@@ -200,14 +200,38 @@ sx issue close <number>
 sx ci
 ```
 
-### 7. Multi-Repo Search
+### 7. High-Throughput Folder & Code Search
+
+Pure-local multi-threaded search across hundreds of checked-out folders without network or Git dependencies:
 
 ```bash
-# Search across registered repos
-sx search "type Engine struct"
+# Basic search across current directory
+sx search "HandleAuth"
 
-# Search specific repo or path
-sx search "HandleAuth" --path /path/to/repo
+# Search specific path(s)
+sx search "HandleAuth" --path /path/to/folder -p /another/folder
+
+# Directory rollup summary with folder table
+sx search "HandleAuth" --by-dir
+
+# Include surrounding context lines (-C before/after, -A after, -B before)
+sx search "HandleAuth" -C 2
+
+# Filter by file extension and exclude unwanted files
+sx search "HandleAuth" --ext go,java,json --exclude "*.min.js"
+
+# Case-sensitive and whole-word matching
+sx search "HandleAuth" -s -w
+
+# Listing modes for shell piping and scripts
+sx search "HandleAuth" --dirs-only       # List only folder paths with hits
+sx search "HandleAuth" --files-only      # List only unique matching file paths (-l)
+sx search "HandleAuth" --count           # Show match counts per folder (-c)
+
+# Generate export audit reports to disk (.md, .json, or .csv)
+sx search "HandleAuth" --by-dir --report audit_report.md
+sx search "HandleAuth" --report findings.json
+sx search "HandleAuth" --report findings.csv
 ```
 
 ### 8. Command History & Execution Analytics
