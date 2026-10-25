@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"shellix/internal/core"
 )
 
 // Manager handles CRUD for bookmarks and snippets
@@ -27,7 +29,7 @@ func NewManager(customPath string) (*Manager, error) {
 			return nil, err
 		}
 		dir := filepath.Join(home, ".shellix")
-		_ = os.MkdirAll(dir, 0755)
+		_ = core.EnsureSecureDir(dir)
 		path = filepath.Join(dir, "shortcuts.json")
 	}
 
@@ -74,7 +76,10 @@ func (m *Manager) save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(m.filePath, data, 0644)
+	if err := os.WriteFile(m.filePath, data, 0600); err != nil {
+		return err
+	}
+	return core.EnsureSecureFile(m.filePath)
 }
 
 // AddBookmark registers a new path bookmark

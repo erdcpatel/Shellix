@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"shellix/internal/core"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -104,6 +106,14 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 					e.Logger.LogStep(&st, res)
 				}
 
+				if res.Skipped {
+					if !e.Silent {
+						fmt.Printf("   %s %s (%s)\n",
+							warnStyle.Render("⏭ [PARALLEL SKIP]"), st.Name, core.GlobalSanitizer.Sanitize(res.Output))
+					}
+					continue
+				}
+
 				if res.Success {
 					if !e.Silent {
 						fmt.Printf("   %s %s in %s\n",
@@ -114,7 +124,7 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 						fmt.Printf("   %s %s: %v (%s)\n",
 							errStyle.Render("✖ [PARALLEL FAIL]"), st.Name, res.Error, metaStyle.Render(res.Duration.String()))
 						if res.Output != "" {
-							fmt.Printf("   Output:\n%s\n", indent(res.Output, "     "))
+							fmt.Printf("   Output:\n%s\n", indent(core.GlobalSanitizer.Sanitize(res.Output), "     "))
 						}
 					}
 					if st.OnFailure != OnFailureContinue && batchErr == nil {
@@ -149,7 +159,7 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 
 		if res.Skipped {
 			if !e.Silent {
-				fmt.Printf("   %s (%s)\n\n", warnStyle.Render("⏭ Skipped"), res.Output)
+				fmt.Printf("   %s (%s)\n\n", warnStyle.Render("⏭ Skipped"), core.GlobalSanitizer.Sanitize(res.Output))
 			}
 			i++
 			continue
@@ -163,7 +173,7 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 			if !e.Silent {
 				fmt.Printf("   %s: %v (%s)\n", errStyle.Render("✖ Failed"), res.Error, metaStyle.Render(res.Duration.String()))
 				if res.Output != "" {
-					fmt.Printf("   Output:\n%s\n", indent(res.Output, "     "))
+					fmt.Printf("   Output:\n%s\n", indent(core.GlobalSanitizer.Sanitize(res.Output), "     "))
 				}
 			}
 
@@ -363,18 +373,7 @@ func buildSanitizedEnv(flowEnv, stepEnv map[string]string, ctx *Context) []strin
 }
 
 func isSensitiveHostEnv(key string) bool {
-	k := strings.ToUpper(key)
-	sensitiveTokens := []string{
-		"AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "GITHUB_TOKEN", "GH_TOKEN",
-		"GITLAB_TOKEN", "SLACK_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK",
-		"DATABASE_PASSWORD", "PRIVATE_KEY", "SECRET_KEY", "AUTH_TOKEN",
-	}
-	for _, s := range sensitiveTokens {
-		if strings.Contains(k, s) {
-			return true
-		}
-	}
-	return false
+	return core.IsSensitiveEnvKey(key)
 }
 
 // buildStepCommand constructs an exec.Cmd using direct tokenization for safe commands,

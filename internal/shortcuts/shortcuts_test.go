@@ -69,4 +69,13 @@ func TestBookmarksAndSnippets(t *testing.T) {
 	if _, ok := mgr.GetBookmark("proj"); ok {
 		t.Errorf("expected bookmark to be deleted")
 	}
+
+	// Verify file permissions (0600)
+	fi, err := os.Stat(jsonPath)
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+	if fi.Mode().Perm() != 0600 {
+		t.Errorf("expected 0600 file permissions, got %04o", fi.Mode().Perm())
+	}
 }

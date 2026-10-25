@@ -10,6 +10,11 @@ import (
 
 var sensitiveKeyPattern = regexp.MustCompile(`(?i)(token|secret|password|passwd|api_key|apikey|private_key|auth|bearer|credential)`)
 
+// IsSensitiveEnvKey reports whether an environment variable key matches sensitive patterns
+func IsSensitiveEnvKey(key string) bool {
+	return sensitiveKeyPattern.MatchString(key)
+}
+
 // SecretSanitizer masks sensitive strings from logs and terminal outputs
 type SecretSanitizer struct {
 	mu      sync.RWMutex

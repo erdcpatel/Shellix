@@ -50,7 +50,7 @@ func getHostKeyCallback() (ssh.HostKeyCallback, error) {
 			f, appendErr := os.OpenFile(knownHostsFile, os.O_APPEND|os.O_WRONLY, 0600)
 			if appendErr == nil {
 				defer f.Close()
-				line := knownhosts.Line([]string{hostname}, key)
+				line := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)
 				_, _ = f.WriteString(line + "\n")
 				return nil
 			}

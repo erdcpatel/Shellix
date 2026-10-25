@@ -1,8 +1,10 @@
 package flow
 
 import (
+	"container/heap"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -83,5 +85,84 @@ func Parse(data []byte) (*Flow, error) {
 		}
 	}
 
+	// Build dependency graph and compute in-degrees for Kahn's algorithm
+	stepMap := make(map[string]Step, len(f.Steps))
+	inDegree := make(map[string]int, len(f.Steps))
+	dependents := make(map[string][]string, len(f.Steps))
+
+	for i := range f.Steps {
+		step := &f.Steps[i]
+		// Deduplicate dependencies
+		uniqueDeps := make([]string, 0, len(step.DependsOn))
+		depSeen := make(map[string]bool)
+		for _, dep := range step.DependsOn {
+			if !depSeen[dep] {
+				depSeen[dep] = true
+				uniqueDeps = append(uniqueDeps, dep)
+			}
+		}
+		step.DependsOn = uniqueDeps
+
+		stepMap[step.Name] = *step
+		inDegree[step.Name] = len(step.DependsOn)
+		for _, dep := range step.DependsOn {
+			dependents[dep] = append(dependents[dep], step.Name)
+		}
+	}
+
+	stepIndex := make(map[string]int, len(f.Steps))
+	for i, step := range f.Steps {
+		stepIndex[step.Name] = i
+	}
+
+	// Ready nodes prioritized by their original definition index to preserve relative ordering
+	h := &stepIndexHeap{}
+	heap.Init(h)
+	for _, step := range f.Steps {
+		if inDegree[step.Name] == 0 {
+			heap.Push(h, stepIndex[step.Name])
+		}
+	}
+
+	sortedSteps := make([]Step, 0, len(f.Steps))
+	for h.Len() > 0 {
+		idx := heap.Pop(h).(int)
+		curr := f.Steps[idx].Name
+
+		sortedSteps = append(sortedSteps, stepMap[curr])
+
+		for _, depName := range dependents[curr] {
+			inDegree[depName]--
+			if inDegree[depName] == 0 {
+				heap.Push(h, stepIndex[depName])
+			}
+		}
+	}
+
+	if len(sortedSteps) < len(f.Steps) {
+		var cyclicSteps []string
+		for _, step := range f.Steps {
+			if inDegree[step.Name] > 0 {
+				cyclicSteps = append(cyclicSteps, step.Name)
+			}
+		}
+		return nil, fmt.Errorf("dependency cycle detected in flow '%s': cycle involves steps [%s]", f.Name, strings.Join(cyclicSteps, ", "))
+	}
+
+	f.Steps = sortedSteps
 	return &f, nil
+}
+
+type stepIndexHeap []int
+
+func (h stepIndexHeap) Len() int           { return len(h) }
+func (h stepIndexHeap) Less(i, j int) bool { return h[i] < h[j] }
+func (h stepIndexHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *stepIndexHeap) Push(x any)        { *h = append(*h, x.(int)) }
+func (h *stepIndexHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }

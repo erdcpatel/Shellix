@@ -1,9 +1,15 @@
 package flow
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"shellix/internal/core"
 )
 
 func TestParseValidFlow(t *testing.T) {
@@ -311,3 +317,188 @@ steps:
 		t.Errorf("step 2 should have run")
 	}
 }
+
+func TestDAGCycleDetection(t *testing.T) {
+	// 2-node cycle: A -> B -> A
+	twoNodeCycle := []byte(`
+name: two-node-cycle
+steps:
+  - name: step-a
+    depends_on: [step-b]
+    run: echo "a"
+  - name: step-b
+    depends_on: [step-a]
+    run: echo "b"
+`)
+	_, err := Parse(twoNodeCycle)
+	if err == nil {
+		t.Fatalf("expected error for 2-node cycle, got nil")
+	}
+	if !strings.Contains(err.Error(), "dependency cycle detected") {
+		t.Errorf("expected 'dependency cycle detected' in error, got: %v", err)
+	}
+
+	// 3-node cycle: A -> B -> C -> A
+	threeNodeCycle := []byte(`
+name: three-node-cycle
+steps:
+  - name: step-a
+    depends_on: [step-c]
+    run: echo "a"
+  - name: step-b
+    depends_on: [step-a]
+    run: echo "b"
+  - name: step-c
+    depends_on: [step-b]
+    run: echo "c"
+`)
+	_, err = Parse(threeNodeCycle)
+	if err == nil {
+		t.Fatalf("expected error for 3-node cycle, got nil")
+	}
+	if !strings.Contains(err.Error(), "dependency cycle detected") {
+		t.Errorf("expected 'dependency cycle detected' in error, got: %v", err)
+	}
+}
+
+func TestTopologicalSorting(t *testing.T) {
+	// Step C depends on B, Step B depends on A. Defined in reverse order: C, B, A.
+	reverseOrder := []byte(`
+name: reverse-order
+steps:
+  - name: step-c
+    depends_on: [step-b]
+    run: echo "c"
+  - name: step-b
+    depends_on: [step-a]
+    run: echo "b"
+  - name: step-a
+    run: echo "a"
+`)
+	f, err := Parse(reverseOrder)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+
+	if len(f.Steps) != 3 {
+		t.Fatalf("expected 3 steps, got %d", len(f.Steps))
+	}
+	if f.Steps[0].Name != "step-a" || f.Steps[1].Name != "step-b" || f.Steps[2].Name != "step-c" {
+		t.Errorf("expected steps sorted topologically [step-a, step-b, step-c], got [%s, %s, %s]",
+			f.Steps[0].Name, f.Steps[1].Name, f.Steps[2].Name)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("flow execution failed: %v", err)
+	}
+	for _, r := range results {
+		if !r.Success {
+			t.Errorf("step %s should have succeeded: %v", r.StepName, r.Error)
+		}
+	}
+}
+
+func TestBuildSanitizedEnvExcludesSecrets(t *testing.T) {
+	_ = os.Setenv("MY_APP_SECRET_TOKEN", "super-secret-token-val")
+	_ = os.Setenv("REGULAR_UNSAFE_VAR", "visible-val")
+	defer func() {
+		_ = os.Unsetenv("MY_APP_SECRET_TOKEN")
+		_ = os.Unsetenv("REGULAR_UNSAFE_VAR")
+	}()
+
+	ctx := NewContext(".", "main")
+	safeEnv := buildSanitizedEnv(nil, nil, ctx)
+
+	for _, e := range safeEnv {
+		if strings.HasPrefix(e, "MY_APP_SECRET_TOKEN=") {
+			t.Errorf("sensitive env var leaked into child environment: %s", e)
+		}
+	}
+}
+
+func TestTerminalSecretRedaction(t *testing.T) {
+	secretVal := "super-secret-token-xyz-1234"
+	core.GlobalSanitizer.RegisterSecret(secretVal)
+
+	yamlData := []byte(fmt.Sprintf(`
+name: redact-test
+steps:
+  - name: fail-step
+    run: echo "%s" && exit 1
+`, secretVal))
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = false
+	_, _ = exec.Execute()
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	outputStr := buf.String()
+
+	if strings.Contains(outputStr, secretVal) {
+		t.Errorf("expected secret '%s' to be redacted from terminal output, got: %s", secretVal, outputStr)
+	}
+	if !strings.Contains(outputStr, "[REDACTED_SECRET]") {
+		t.Errorf("expected '[REDACTED_SECRET]' in terminal output, got: %s", outputStr)
+	}
+}
+
+func TestParallelTerminalSecretRedaction(t *testing.T) {
+	secretVal := "parallel-secret-token-9876"
+	core.GlobalSanitizer.RegisterSecret(secretVal)
+
+	yamlData := []byte(fmt.Sprintf(`
+name: parallel-redact-test
+steps:
+  - name: parallel-fail-step
+    parallel: true
+    run: echo "%s" && exit 1
+`, secretVal))
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = false
+	_, _ = exec.Execute()
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	outputStr := buf.String()
+
+	if strings.Contains(outputStr, secretVal) {
+		t.Errorf("expected secret '%s' to be redacted from parallel terminal output, got: %s", secretVal, outputStr)
+	}
+	if !strings.Contains(outputStr, "[REDACTED_SECRET]") {
+		t.Errorf("expected '[REDACTED_SECRET]' in parallel terminal output, got: %s", outputStr)
+	}
+}
+
+

@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"github.com/zalando/go-keyring"
 )
 
 // NewDoctorCmd inspects the host environment, toolchains, permissions, and security
@@ -119,10 +120,17 @@ func runDoctorDiagnostics(app *AppContext) {
 	fmt.Println()
 	fmt.Println(sectionStyle.Render("🔒 Security, Keyring & Permissions"))
 	v := vault.NewVault("")
-	testErr := v.Set("__doctor_probe__", "probe_val")
+	testKey := "__doctor_probe__"
+	testVal := "probe_val"
+	testErr := keyring.Set(vault.ServiceName, testKey, testVal)
 	if testErr == nil {
-		_ = v.Delete("__doctor_probe__")
-		check("security", "Native OS Keyring", true, false, fmt.Sprintf("%s operational", v.ProviderName()))
+		_, getErr := keyring.Get(vault.ServiceName, testKey)
+		_ = keyring.Delete(vault.ServiceName, testKey)
+		if getErr == nil {
+			check("security", "Native OS Keyring", true, false, fmt.Sprintf("%s operational", v.ProviderName()))
+		} else {
+			check("security", "Native OS Keyring", false, true, fmt.Sprintf("OS Keyring read failed: %v", getErr))
+		}
 	} else {
 		check("security", "Native OS Keyring", false, true, fmt.Sprintf("OS Keyring unavailable: %v", testErr))
 	}

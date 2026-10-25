@@ -69,3 +69,91 @@ steps:
 
 	t.Logf("Parallel flow completed in %v", duration)
 }
+
+func TestParallelStepSkipDoesNotAbort(t *testing.T) {
+	yamlData := []byte(`
+name: parallel-skip-test
+steps:
+  - name: failing-prep
+    run: exit 1
+    on_failure: continue
+  - name: parallel-skipped
+    depends_on: [failing-prep]
+    parallel: true
+    run: echo "should be skipped"
+  - name: parallel-independent
+    parallel: true
+    run: echo "worker-independent-done"
+  - name: final-step
+    run: echo "final-ok"
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution should NOT fail when parallel step is skipped, got: %v", err)
+	}
+
+	if len(results) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(results))
+	}
+
+	if results[0].Success {
+		t.Errorf("step 0 expected failure")
+	}
+	if !results[1].Skipped {
+		t.Errorf("step 1 should be skipped due to unsatisfied dependency")
+	}
+	if !results[2].Success || results[2].Skipped {
+		t.Errorf("step 2 should have succeeded")
+	}
+	if !results[3].Success {
+		t.Errorf("step 3 should have succeeded")
+	}
+}
+
+func TestParallelStepConditionSkip(t *testing.T) {
+	yamlData := []byte(`
+name: parallel-condition-skip
+steps:
+  - name: parallel-cond-skipped
+    if: "'{{git.branch}}' == 'nonexistent-branch'"
+    parallel: true
+    run: echo "skip me"
+  - name: parallel-cond-run
+    parallel: true
+    run: echo "run me"
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution should succeed, got: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if !results[0].Skipped {
+		t.Errorf("expected step 0 to be skipped")
+	}
+	if !results[1].Success || results[1].Skipped {
+		t.Errorf("expected step 1 to succeed")
+	}
+}
