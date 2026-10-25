@@ -124,15 +124,29 @@ steps:
 
 ---
 
-## 4. Running Flows with CLI
+## 4. Running Flows with CLI & Interactive TUI
 
 ```bash
 # Execute a specific flow file
 sx flow run ./deploy.yaml
 
+# Execute with full-screen interactive Bubble Tea TUI
+sx flow run verification-pipeline --tui
+# Or shortcut command
+sx flow tui verification-pipeline
+
 # Validate syntax without executing
 sx flow validate ./deploy.yaml
 
-# List user flows installed in ~/.shellix/flows
+# List user and fixture flows
 sx flow list
 ```
+
+### Interactive Flow TUI (`sx flow run --tui`)
+
+Shellix features a full-screen, split-pane Bubble Tea dashboard for workflow executions:
+- **Left Panel (Steps Execution)**: Displays step status badges (`⏳` Pending, `🔄` Running spinner, `✔` Success, `⏭` Skipped, `✖` Failed), execution duration per step, and `⚡` parallel badges.
+- **Right Panel (Live Logs Viewport)**: Live scrollable output of the currently selected step.
+- **Interactive Navigation**: Navigate between steps with `↑`/`↓` or `j`/`k`, scroll logs with `pgup`/`pgdn`, quit with `q`/`esc`.
+
+![Interactive Flow TUI](images/18_shellix_flow_tui.png)

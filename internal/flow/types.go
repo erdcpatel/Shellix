@@ -49,6 +49,26 @@ type ExecutionResult struct {
 	IsParallel bool
 }
 
+// FlowEventType denotes state changes during workflow execution
+type FlowEventType int
+
+const (
+	EventStepStart FlowEventType = iota
+	EventStepDone
+	EventFlowDone
+)
+
+// FlowEvent communicates real-time progress to TUI or external listeners
+type FlowEvent struct {
+	Type       FlowEventType
+	StepIndex  int
+	StepName   string
+	Result     *ExecutionResult
+	Duration   time.Duration
+	Error      error
+	IsParallel bool
+}
+
 // RunLogSummary holds high-level metadata for a persisted flow run
 type RunLogSummary struct {
 	RunID     string    `json:"run_id"`

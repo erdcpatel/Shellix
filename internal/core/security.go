@@ -10,6 +10,14 @@ import (
 
 var sensitiveKeyPattern = regexp.MustCompile(`(?i)(token|secret|password|passwd|api_key|apikey|private_key|auth|bearer|credential)`)
 
+var tokenPrefixPattern = regexp.MustCompile(`(?i)(bearer\s+|token\s+)([A-Za-z0-9\-_]{16,})`)
+
+var knownTokenPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`gh[pousr]_[A-Za-z0-9_]{16,}`),
+	regexp.MustCompile(`github_pat_[A-Za-z0-9_]{22,}`),
+	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
+}
+
 // IsSensitiveEnvKey reports whether an environment variable key matches sensitive patterns
 func IsSensitiveEnvKey(key string) bool {
 	return sensitiveKeyPattern.MatchString(key)
@@ -64,7 +72,7 @@ func (s *SecretSanitizer) AutoRegisterEnv() {
 	}
 }
 
-// Sanitize replaces all registered secrets with [REDACTED_SECRET]
+// Sanitize replaces all registered secrets and known secret patterns with [REDACTED_SECRET]
 func (s *SecretSanitizer) Sanitize(input string) string {
 	if input == "" {
 		return ""
@@ -79,6 +87,12 @@ func (s *SecretSanitizer) Sanitize(input string) string {
 			result = strings.ReplaceAll(result, secret, "[REDACTED_SECRET]")
 		}
 	}
+
+	for _, pat := range knownTokenPatterns {
+		result = pat.ReplaceAllString(result, "[REDACTED_SECRET]")
+	}
+	result = tokenPrefixPattern.ReplaceAllString(result, "${1}[REDACTED_SECRET]")
+
 	return result
 }
 

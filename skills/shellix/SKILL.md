@@ -27,7 +27,7 @@ Use `sx` whenever you need to:
 | `sx g s` or `sx git status` | Sub-2ms repository status | Current branch, latest commit hash/author, staged, unstaged, untracked files |
 | `sx g <any-git-arg>` | Transparent native Git passthrough | Runs system Git directly with native speed |
 
-### 2. Automation Flows with Parallel Steps
+### 2. Automation Flows with Parallel Steps & Interactive TUI
 
 Shellix Flows are declarative YAML files that replace complex shell scripts.
 
@@ -35,8 +35,13 @@ Shellix Flows are declarative YAML files that replace complex shell scripts.
 # Validate a flow before running
 sx flow validate path/to/flow.yaml
 
-# Execute a flow
+# Execute a flow sequentially or in parallel batches
 sx flow run path/to/flow.yaml
+
+# Execute with full-screen interactive Bubble Tea dashboard
+sx flow run path/to/flow.yaml --tui
+# Or shortcut
+sx flow tui path/to/flow.yaml
 
 # Inspect execution audit logs
 sx flow logs
@@ -156,7 +161,24 @@ sx search "type Engine struct"
 sx search "HandleAuth" --path /path/to/repo
 ```
 
-### 4. Bookmarks and Snippets
+### 8. Command History & Execution Analytics
+
+```bash
+# View recent executed commands (with exit status, duration, and deduplication)
+sx history
+sx history list -n 25
+
+# Search command history by keyword or directory
+sx history search "docker"
+
+# Display execution analytics dashboard (success rate, latency, top commands)
+sx history stats
+
+# Clear history store
+sx history clear -y
+```
+
+### 9. Bookmarks and Snippets
 
 ```bash
 # List all bookmarks

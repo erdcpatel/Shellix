@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"shellix/internal/flow"
 
@@ -14,6 +15,7 @@ import (
 // NewFlowCmd handles automation workflow commands
 func NewFlowCmd(app *AppContext) *cobra.Command {
 	var skipConfirm bool
+	var useTUI bool
 
 	flowCmd := &cobra.Command{
 		Use:   "flow",
@@ -40,13 +42,72 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 				branch = st.Branch
 			}
 
+			start := time.Now()
+			var runErr error
+			defer func() {
+				dur := time.Since(start)
+				exitCode := 0
+				if runErr != nil {
+					exitCode = 1
+				}
+				cmdStr := fmt.Sprintf("sx flow run %s", args[0])
+				if useTUI {
+					cmdStr += " --tui"
+				}
+				if store, sErr := getHistoryStore(app); sErr == nil && store != nil {
+					_, _ = store.Record(cmdStr, cwd, dur, exitCode)
+				}
+			}()
+
 			ctx := flow.NewContext(cwd, branch)
+			if useTUI {
+				runErr = flow.RunFlowTUI(f, ctx)
+				return runErr
+			}
+
 			executor := flow.NewExecutor(f, ctx)
-			_, err = executor.Execute()
-			return err
+			_, runErr = executor.Execute()
+			return runErr
 		},
 	}
+	flowRunCmd.Flags().BoolVarP(&useTUI, "tui", "t", false, "Launch full-screen interactive Bubble Tea flow dashboard")
 	flowRunCmd.Flags().BoolVarP(&skipConfirm, "yes", "y", false, "Execute flow without confirmation prompt")
+
+	flowTUICmd := &cobra.Command{
+		Use:   "tui <flow-name-or-path>",
+		Short: "Execute a flow with interactive full-screen Bubble Tea dashboard",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			targetPath := resolveFlowPath(args[0])
+			f, err := flow.ParseFile(targetPath)
+			if err != nil {
+				return err
+			}
+
+			cwd, _ := os.Getwd()
+			branch := "unknown"
+			if st, err := app.GitEngine.GetStatus(cwd); err == nil {
+				branch = st.Branch
+			}
+
+			ctx := flow.NewContext(cwd, branch)
+			start := time.Now()
+			var runErr error
+			defer func() {
+				dur := time.Since(start)
+				exitCode := 0
+				if runErr != nil {
+					exitCode = 1
+				}
+				if store, sErr := getHistoryStore(app); sErr == nil && store != nil {
+					_, _ = store.Record(fmt.Sprintf("sx flow tui %s", args[0]), cwd, dur, exitCode)
+				}
+			}()
+
+			runErr = flow.RunFlowTUI(f, ctx)
+			return runErr
+		},
+	}
 
 	flowValidateCmd := &cobra.Command{
 		Use:   "validate <file.yaml>",
@@ -111,7 +172,7 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd)
+	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd)
 	return flowCmd
 }
 

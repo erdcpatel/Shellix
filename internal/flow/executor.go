@@ -23,6 +23,7 @@ type Executor struct {
 	Context     *Context
 	Silent      bool
 	Logger      *FlowLogger
+	OnEvent     func(event FlowEvent)
 	mu          sync.RWMutex
 	stepResults map[string]ExecutionResult
 }
@@ -223,6 +224,14 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 		}
 	}
 
+	if e.OnEvent != nil {
+		e.OnEvent(FlowEvent{
+			Type:     EventFlowDone,
+			Duration: totalDuration,
+			Error:    flowErr,
+		})
+	}
+
 	return allResults, flowErr
 }
 
@@ -242,7 +251,30 @@ func (e *Executor) executeParallelBatch(steps []Step) []ExecutionResult {
 	return results
 }
 
+func (e *Executor) finishStep(res ExecutionResult, isParallel bool) ExecutionResult {
+	e.recordStepResult(res)
+	if e.OnEvent != nil {
+		e.OnEvent(FlowEvent{
+			Type:       EventStepDone,
+			StepName:   res.StepName,
+			Result:     &res,
+			Duration:   res.Duration,
+			Error:      res.Error,
+			IsParallel: isParallel,
+		})
+	}
+	return res
+}
+
 func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
+	if e.OnEvent != nil {
+		e.OnEvent(FlowEvent{
+			Type:       EventStepStart,
+			StepName:   step.Name,
+			IsParallel: isParallel,
+		})
+	}
+
 	// 1. DAG dependency verification
 	for _, dep := range step.DependsOn {
 		if !e.isStepSuccessful(dep) {
@@ -255,8 +287,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 				Output:     fmt.Sprintf("Prerequisite '%s' failed or was not satisfied", dep),
 				IsParallel: isParallel,
 			}
-			e.recordStepResult(res)
-			return res
+			return e.finishStep(res, isParallel)
 		}
 	}
 
@@ -272,8 +303,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 				Output:     fmt.Sprintf("condition '%s' evaluated to false", cond),
 				IsParallel: isParallel,
 			}
-			e.recordStepResult(res)
-			return res
+			return e.finishStep(res, isParallel)
 		}
 	}
 
@@ -332,8 +362,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 				Output:     finalOutput,
 				IsParallel: isParallel,
 			}
-			e.recordStepResult(res)
-			return res
+			return e.finishStep(res, isParallel)
 		}
 
 		finalErr = err
@@ -350,8 +379,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		Output:     finalOutput,
 		IsParallel: isParallel,
 	}
-	e.recordStepResult(res)
-	return res
+	return e.finishStep(res, isParallel)
 }
 
 func indent(text, prefix string) string {

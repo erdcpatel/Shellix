@@ -58,3 +58,18 @@ graph TD
 ### 3.4 Terminal Engine (`internal/terminal`)
 - Unix/macOS: Allocates pseudo-terminals via `creack/pty`, hooks terminal raw mode, and forwards window resize signals (`SIGWINCH`).
 - Windows: Spawns interactive shells (PowerShell/cmd) cleanly connected to `os.Stdin`/`os.Stdout`.
+
+### 3.5 Automation Workflow Engine & Flow TUI (`internal/flow`)
+- Declarative YAML multi-step workflow engine with DAG dependency scheduling (`depends_on`), conditional execution (`if`), parallel batch wave partitioning, and step output interpolation (`{{steps.<name>.output}}`).
+- Built-in full-screen interactive Bubble Tea dashboard (`sx flow run --tui` / `sx flow tui`) featuring real-time spinners, live log streaming viewports, and progress badges.
+- Secret-redacted audit logs written to `~/.shellix/logs/flows/` with strict `0600` permissions.
+
+### 3.6 Command History & Execution Analytics (`internal/history`)
+- In-memory, persistent command history store (`~/.shellix/history.json`) with strict `0700`/`0600` permission enforcement.
+- Consecutive execution deduplication with frequency counters, timestamps, exit codes, and latency tracking.
+- Fast in-memory filtering (`sx history search <query>`) and execution statistics dashboard (`sx history stats`) calculating success rates and top executed commands.
+- Automatic pattern-based secret sanitization (GitHub tokens, Bearer tokens, AWS keys, passwords) preventing credential leakage to disk.
+
+### 3.7 Native GitHub Suite (`internal/github`)
+- Zero-external-dependency HTTPS client utilizing Personal Access Tokens (PAT) retrieved from native OS Keyring.
+- Full support for Pull Requests (`sx pr list`, `view`, `checkout`), CI checks (`sx ci status`), and Issues (`sx issue list`, `view`, `create`, `close`).

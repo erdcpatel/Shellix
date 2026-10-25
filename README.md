@@ -93,6 +93,14 @@ Initialize ~/.shellix storage, secure permissions, and instant shell aliases:
 Manage directory bookmarks and reusable command snippets:
 ![Shortcuts](docs/images/04_shellix_shortcuts.png)
 
+### 12. Interactive Flow TUI (`sx flow run --tui`)
+Full-screen Bubble Tea dashboard with real-time spinners, live log streaming, and step progress:
+![Interactive Flow TUI](docs/images/18_shellix_flow_tui.png)
+
+### 13. Command History & Execution Analytics (`sx history`)
+In-memory searchable command history with deduplication, latency metrics, and success rates:
+![Command History](docs/images/19_shellix_history.png)
+
 ---
 
 ## 🚀 Key Features

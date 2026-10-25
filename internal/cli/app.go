@@ -6,6 +6,7 @@ import (
 
 	"shellix/internal/core"
 	"shellix/internal/git"
+	"shellix/internal/history"
 	"shellix/internal/session"
 	"shellix/internal/shortcuts"
 	"shellix/internal/ssh"
@@ -13,11 +14,12 @@ import (
 
 // AppContext centralizes shared services and state across all CLI subcommands
 type AppContext struct {
-	Config      *core.Config
-	GitEngine   *git.Engine
-	ShortcutMgr *shortcuts.Manager
-	SSHMgr      *ssh.ProfileManager
-	SessionMgr  *session.Manager
+	Config       *core.Config
+	GitEngine    *git.Engine
+	ShortcutMgr  *shortcuts.Manager
+	SSHMgr       *ssh.ProfileManager
+	SessionMgr   *session.Manager
+	HistoryStore *history.Store
 }
 
 // NewAppContext constructs the core application context
@@ -32,13 +34,15 @@ func NewAppContext() *AppContext {
 	shortcutMgr, _ := shortcuts.NewManager("")
 	sshMgr, _ := ssh.NewProfileManager("")
 	sessionMgr := session.NewManager()
+	historyStore, _ := history.NewStore("")
 
 	return &AppContext{
-		Config:      cfg,
-		GitEngine:   gitEngine,
-		ShortcutMgr: shortcutMgr,
-		SSHMgr:      sshMgr,
-		SessionMgr:  sessionMgr,
+		Config:       cfg,
+		GitEngine:    gitEngine,
+		ShortcutMgr:  shortcutMgr,
+		SSHMgr:       sshMgr,
+		SessionMgr:   sessionMgr,
+		HistoryStore: historyStore,
 	}
 }
 

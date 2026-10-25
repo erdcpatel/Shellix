@@ -22,6 +22,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 			fmt.Println("⚡ Quick Superpowers:")
 			fmt.Println("  • sx g             Launch interactive Git TUI dashboard (staging & diffs)")
 			fmt.Println("  • sx flow          List and run automation flows with parallel builds")
+			fmt.Println("  • sx history       Search execution history & view command statistics")
 			fmt.Println("  • sx java ls       List all discovered JDKs & switch JAVA_HOME")
 			fmt.Println("  • sx search <q>    High-speed parallel code search (.gitignore-aware)")
 			fmt.Println("  • sx doctor        Comprehensive system health & environment diagnostics")
@@ -48,6 +49,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewSearchCmd(app),
 		NewBookmarkCmd(app),
 		NewSnippetCmd(app),
+		NewHistoryCmd(app),
 		NewDoctorCmd(app),
 		NewInitCmd(app),
 	)
