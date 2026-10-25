@@ -63,7 +63,18 @@ Search across multiple codebases with syntax-highlighted matching lines:
 Manage server targets and execute commands in parallel across Linux nodes:
 ![SSH Manager](docs/images/08_shellix_ssh_manager.png)
 
-### 7. Developer Shortcuts
+# 7. GitHub Integration (HTTPS + PAT)
+Manage PRs and monitor CI runs directly from your terminal:
+```bash
+sx github auth            # Save PAT into Windows Credential Manager / Keychain
+sx github whoami          # Verify authenticated profile
+sx pr list                # List open pull requests
+sx pr view 42             # View PR details
+sx pr create --title "..." # Open new pull request
+sx ci                     # Check CI workflow runs for current branch
+```
+
+### 8. Developer Shortcuts
 Manage directory bookmarks and reusable command snippets:
 ![Shortcuts](docs/images/04_shellix_shortcuts.png)
 
@@ -137,7 +148,8 @@ sx snip run test
 
 - [Architecture Overview](docs/architecture.md)
 - [Security & Privacy Architecture](docs/security.md)
-- [Dual-Engine Git Specification](docs/git-engine.md)
+- [Dual-Engine Git & Interactive TUI](docs/git-engine.md)
+- [GitHub Integration (HTTPS + PAT)](docs/github.md)
 - [Shellix Flows Automation & Parallel Builds](docs/flows.md)
 - [Java Toolchain & Multi-Version Manager](docs/java.md)
 - [Native OS Credential Manager (Vault)](docs/vault.md)
