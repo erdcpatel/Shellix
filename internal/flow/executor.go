@@ -17,20 +17,36 @@ import (
 
 // Executor manages execution of a Flow
 type Executor struct {
-	Flow    *Flow
-	Context *Context
-	Silent  bool
-	Logger  *FlowLogger
+	Flow        *Flow
+	Context     *Context
+	Silent      bool
+	Logger      *FlowLogger
+	mu          sync.RWMutex
+	stepResults map[string]ExecutionResult
 }
 
 // NewExecutor creates a runner for a given flow and context
 func NewExecutor(f *Flow, ctx *Context) *Executor {
 	logger, _ := NewFlowLogger(f.Name)
 	return &Executor{
-		Flow:    f,
-		Context: ctx,
-		Logger:  logger,
+		Flow:        f,
+		Context:     ctx,
+		Logger:      logger,
+		stepResults: make(map[string]ExecutionResult),
 	}
+}
+
+func (e *Executor) recordStepResult(res ExecutionResult) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.stepResults[res.StepName] = res
+}
+
+func (e *Executor) isStepSuccessful(name string) bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	res, ok := e.stepResults[name]
+	return ok && res.Success && !res.Skipped
 }
 
 // Execute runs steps in the flow, handling parallel batches and sequential execution
@@ -131,6 +147,14 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 			e.Logger.LogStep(&current, res)
 		}
 
+		if res.Skipped {
+			if !e.Silent {
+				fmt.Printf("   %s (%s)\n\n", warnStyle.Render("⏭ Skipped"), res.Output)
+			}
+			i++
+			continue
+		}
+
 		if res.Success {
 			if !e.Silent {
 				fmt.Printf("   %s in %s\n\n", successStyle.Render("✔ Completed"), metaStyle.Render(res.Duration.String()))
@@ -197,6 +221,40 @@ func (e *Executor) executeParallelBatch(steps []Step) []ExecutionResult {
 }
 
 func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
+	// 1. DAG dependency verification
+	for _, dep := range step.DependsOn {
+		if !e.isStepSuccessful(dep) {
+			res := ExecutionResult{
+				StepName:   step.Name,
+				Duration:   0,
+				Success:    false,
+				Skipped:    true,
+				Error:      fmt.Errorf("prerequisite dependency '%s' was not satisfied", dep),
+				Output:     fmt.Sprintf("Prerequisite '%s' failed or was not satisfied", dep),
+				IsParallel: isParallel,
+			}
+			e.recordStepResult(res)
+			return res
+		}
+	}
+
+	// 2. Conditional execution evaluation
+	if step.If != "" {
+		cond := e.Context.Interpolate(step.If)
+		if !evalCondition(cond) {
+			res := ExecutionResult{
+				StepName:   step.Name,
+				Duration:   0,
+				Success:    true,
+				Skipped:    true,
+				Output:     fmt.Sprintf("condition '%s' evaluated to false", cond),
+				IsParallel: isParallel,
+			}
+			e.recordStepResult(res)
+			return res
+		}
+	}
+
 	start := time.Now()
 	var finalErr error
 	var finalOutput string
@@ -245,13 +303,15 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		e.Context.SetStepResult(step.Name, finalOutput, exitCode, stepDuration)
 
 		if err == nil {
-			return ExecutionResult{
+			res := ExecutionResult{
 				StepName:   step.Name,
 				Duration:   stepDuration,
 				Success:    true,
 				Output:     finalOutput,
 				IsParallel: isParallel,
 			}
+			e.recordStepResult(res)
+			return res
 		}
 
 		finalErr = err
@@ -260,7 +320,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		}
 	}
 
-	return ExecutionResult{
+	res := ExecutionResult{
 		StepName:   step.Name,
 		Duration:   time.Since(start),
 		Success:    false,
@@ -268,6 +328,8 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		Output:     finalOutput,
 		IsParallel: isParallel,
 	}
+	e.recordStepResult(res)
+	return res
 }
 
 func indent(text, prefix string) string {
@@ -374,4 +436,28 @@ func splitCommandTokens(cmd string) []string {
 		tokens = append(tokens, current.String())
 	}
 	return tokens
+}
+
+// evalCondition evaluates a basic boolean condition for flow step gating
+func evalCondition(expr string) bool {
+	clean := strings.TrimSpace(expr)
+	if clean == "" || clean == "true" || clean == "1" {
+		return true
+	}
+	if clean == "false" || clean == "0" {
+		return false
+	}
+	if strings.Contains(clean, "==") {
+		parts := strings.SplitN(clean, "==", 2)
+		left := strings.Trim(strings.TrimSpace(parts[0]), `"'`)
+		right := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+		return left == right
+	}
+	if strings.Contains(clean, "!=") {
+		parts := strings.SplitN(clean, "!=", 2)
+		left := strings.Trim(strings.TrimSpace(parts[0]), `"'`)
+		right := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+		return left != right
+	}
+	return clean != ""
 }

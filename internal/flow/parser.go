@@ -71,5 +71,17 @@ func Parse(data []byte) (*Flow, error) {
 		}
 	}
 
+	// Validate DAG dependency graph references
+	for _, step := range f.Steps {
+		for _, dep := range step.DependsOn {
+			if dep == step.Name {
+				return nil, fmt.Errorf("step '%s' cannot depend on itself in flow '%s'", step.Name, f.Name)
+			}
+			if !seenNames[dep] {
+				return nil, fmt.Errorf("step '%s' depends on unknown step '%s' in flow '%s'", step.Name, dep, f.Name)
+			}
+		}
+	}
+
 	return &f, nil
 }

@@ -222,3 +222,92 @@ func TestSplitCommandTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestDAGDependencyExecution(t *testing.T) {
+	yamlData := []byte(`
+name: dag-flow
+steps:
+  - name: step-a
+    run: echo "step-a-ok"
+  - name: step-b
+    depends_on: [step-a]
+    run: echo "step-b-ok"
+  - name: step-c
+    depends_on: [nonexistent]
+    run: echo "should not parse"
+`)
+
+	_, err := Parse(yamlData)
+	if err == nil {
+		t.Fatalf("expected error for unknown dependency 'nonexistent', got nil")
+	}
+
+	validYaml := []byte(`
+name: valid-dag
+steps:
+  - name: compile
+    run: echo "compiled"
+  - name: test
+    depends_on: [compile]
+    run: echo "tested"
+`)
+
+	f, err := Parse(validYaml)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+	if len(results) != 2 || !results[0].Success || !results[1].Success {
+		t.Errorf("DAG execution failed: %+v", results)
+	}
+}
+
+func TestConditionalStepExecution(t *testing.T) {
+	yamlData := []byte(`
+name: conditional-flow
+steps:
+  - name: always-run
+    run: echo "running"
+  - name: skip-me
+    if: "'{{git.branch}}' == 'release'"
+    run: echo "skipped"
+  - name: run-me
+    if: "'{{git.branch}}' == 'main'"
+    run: echo "executed"
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	if !results[0].Success || results[0].Skipped {
+		t.Errorf("step 0 should have run")
+	}
+	if !results[1].Skipped {
+		t.Errorf("step 1 should have been skipped")
+	}
+	if !results[2].Success || results[2].Skipped {
+		t.Errorf("step 2 should have run")
+	}
+}

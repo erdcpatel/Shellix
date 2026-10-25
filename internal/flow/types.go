@@ -25,6 +25,8 @@ type Step struct {
 	RetryDelay  string            `yaml:"retry_delay,omitempty"`
 	RetryDur    time.Duration     `yaml:"-"`
 	Parallel    bool              `yaml:"parallel,omitempty"`
+	DependsOn   []string          `yaml:"depends_on,omitempty"`
+	If          string            `yaml:"if,omitempty"`
 	Env         map[string]string `yaml:"env,omitempty"`
 }
 
@@ -41,6 +43,7 @@ type ExecutionResult struct {
 	StepName   string
 	Duration   time.Duration
 	Success    bool
+	Skipped    bool
 	Error      error
 	Output     string
 	IsParallel bool

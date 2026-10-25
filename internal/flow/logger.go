@@ -20,14 +20,14 @@ type FlowLogger struct {
 	LogPath   string
 }
 
-// GetLogDir returns ~/.shellix/logs/flows
+// GetLogDir returns ~/.shellix/logs/flows with strict 0700 permissions
 func GetLogDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	dir := filepath.Join(home, ".shellix", "logs", "flows")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := core.EnsureSecureDir(dir); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -46,10 +46,11 @@ func NewFlowLogger(flowName string) (*FlowLogger, error) {
 	fileName := fmt.Sprintf("%s-%s.log", cleanName, runID)
 	logPath := filepath.Join(dir, fileName)
 
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
 	}
+	_ = core.EnsureSecureFile(logPath)
 
 	hostname, _ := os.Hostname()
 

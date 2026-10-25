@@ -53,9 +53,12 @@ func RunShell(customShell string) error {
 	}
 	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
 
-	// Copy stdin to the pty and the pty to stdout
+	// Copy stdin to the pty and the pty to stdout with process reaping
 	go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
 	_, _ = io.Copy(os.Stdout, ptmx)
+
+	// Wait for the subshell process to exit cleanly and reap exit state
+	_ = cmd.Wait()
 
 	return nil
 }
