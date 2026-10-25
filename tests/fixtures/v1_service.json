@@ -1,0 +1,17 @@
+{
+  "service": "billing-engine",
+  "version": "1.4.2",
+  "port": 8080,
+  "cluster": "us-east-1",
+  "workers": 8,
+  "features": [
+    "stripe",
+    "paypal",
+    "invoice_pdf"
+  ],
+  "limits": {
+    "rate_limit_per_min": 5000,
+    "max_payload_mb": 10
+  },
+  "deprecated_gateway": "legacy_v1"
+}

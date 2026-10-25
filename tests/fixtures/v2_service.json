@@ -1,0 +1,21 @@
+{
+  "service": "billing-engine",
+  "version": "2.0.0",
+  "port": 8080,
+  "cluster": "us-east-1",
+  "workers": 16,
+  "features": [
+    "stripe",
+    "paypal",
+    "invoice_pdf",
+    "apple_pay"
+  ],
+  "limits": {
+    "rate_limit_per_min": 10000,
+    "max_payload_mb": 25
+  },
+  "telemetry": {
+    "enabled": true,
+    "exporter": "otlp"
+  }
+}

@@ -122,6 +122,22 @@ Fuzzy branch selector with ahead/behind status, commit summaries, and instant ch
 Interactively record shell commands and automatically synthesize declarative YAML workflows:
 ![Flow Recorder](docs/images/24_shellix_flow_record.png)
 
+### 19. HTTP & API Terminal Client (`sx http` / `sx api`)
+High-precision HTTP client with sub-millisecond network timing metrics (DNS, TCP, TLS, TTFB), automatic JSON detection, and side-by-side API endpoint diffing:
+![HTTP Diff](docs/images/25_shellix_http_diff.png)
+
+### 20. Project Environment & Secret Injection (`sx env` / `.env.vault`)
+Hardware-backed AES-256-GCM encrypted local environment store with automatic key management via OS Credential Vault (Windows Credential Manager / macOS Keychain) and secret-masked child process execution:
+![Env Vault](docs/images/26_shellix_env_vault.png)
+
+### 21. Flow Cron & Recurring Scheduler (`sx flow schedule`)
+Standard 5-field cron automation scheduler with macros (`@hourly`, `@daily`, `@weekly`), next trigger calculations, state tracking, and background daemon runner:
+![Flow Cron](docs/images/27_shellix_flow_cron.png)
+
+### 22. Streaming Large File & JSON Diff Engine (`sx json` / `sx view`)
+High-throughput streaming viewer for multi-gigabyte logs (with chunked reverse tail seek) and JSONPath querying (`.data.items[0]`) with deep schema structural diffing:
+![JSON Diff](docs/images/28_shellix_json_diff.png)
+
 ---
 
 ## 🚀 Key Features
@@ -184,6 +200,25 @@ sx bm add myproject .
 sx bm list
 sx snip add test "go test -v ./..."
 sx snip run test
+
+# 7. HTTP & API Diffing
+sx http get https://api.github.com/zen
+sx http diff https://api.staging.corp/health https://api.prod.corp/health
+
+# 8. Project Environment Vault & Secret Injection
+sx env set API_KEY=sk_live_9381 DATABASE_URL=postgres://...
+sx env list
+sx env run -- ./deploy.sh
+
+# 9. Flow Cron Scheduler
+sx flow schedule add build-and-test "*/15 * * * *"
+sx flow schedule list
+sx flow schedule start
+
+# 10. Streaming File & JSON Viewer
+sx json query ".users[0].name" data.json
+sx json diff v1_service.json v2_service.json
+sx view large_service.log --tail -n 100
 ```
 
 ---

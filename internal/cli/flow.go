@@ -273,8 +273,215 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd, flowRecordCmd, flowReplayCmd)
+	flowScheduleCmd := &cobra.Command{
+		Use:   "schedule",
+		Short: "Cron-based recurring flow scheduler and background runner",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return listScheduledFlows()
+		},
+	}
+
+	var scheduleCron string
+	schedAddCmd := &cobra.Command{
+		Use:   "add <flow-name-or-path> <cron-expr>",
+		Short: "Register a recurring cron schedule for an automation flow",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flowInput := args[0]
+			cronExpr := scheduleCron
+			if len(args) == 2 {
+				cronExpr = args[1]
+			}
+			if cronExpr == "" {
+				return fmt.Errorf("cron expression required (e.g. \"*/15 * * * *\" or \"@daily\")")
+			}
+
+			targetPath := resolveFlowPath(flowInput)
+			f, err := flow.ParseFile(targetPath)
+			if err != nil {
+				return fmt.Errorf("cannot resolve flow %q: %w", flowInput, err)
+			}
+
+			store, err := flow.NewScheduleStore("")
+			if err != nil {
+				return err
+			}
+
+			job, err := store.Add(f.Name, targetPath, cronExpr)
+			if err != nil {
+				return err
+			}
+
+			titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+			keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00BFFF"))
+			valStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+
+			fmt.Println(titleStyle.Render("⏰ Scheduled Automation Flow Added"))
+			fmt.Printf("  • Job ID   : %s\n", keyStyle.Render(job.ID))
+			fmt.Printf("  • Flow     : %s\n", keyStyle.Render(job.FlowName))
+			fmt.Printf("  • Cron     : %s\n", valStyle.Render(job.CronExpr))
+			fmt.Printf("  • Next Run : %s\n", dimStyle.Render(job.NextRun.Format(time.RFC1123)))
+			return nil
+		},
+	}
+	schedAddCmd.Flags().StringVarP(&scheduleCron, "cron", "c", "", "Cron expression (e.g. '0 0 * * *', '@hourly', '*/5 * * * *')")
+
+	schedListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all scheduled recurring flows",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return listScheduledFlows()
+		},
+	}
+
+	schedRemoveCmd := &cobra.Command{
+		Use:   "remove <id-or-flow-name>",
+		Short: "Remove a scheduled flow job",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := flow.NewScheduleStore("")
+			if err != nil {
+				return err
+			}
+
+			removed, err := store.Remove(args[0])
+			if err != nil {
+				return err
+			}
+			if !removed {
+				return fmt.Errorf("no scheduled job found matching %q", args[0])
+			}
+
+			successStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
+			fmt.Println(successStyle.Render(fmt.Sprintf("✓ Schedule for %q successfully removed", args[0])))
+			return nil
+		},
+	}
+
+	var pollSec int
+	schedStartCmd := &cobra.Command{
+		Use:   "start",
+		Short: "Run the recurring flow scheduler daemon",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := flow.NewScheduleStore("")
+			if err != nil {
+				return err
+			}
+
+			titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+			fmt.Println(titleStyle.Render("⏰ Shellix Flow Scheduler Daemon Active"))
+			fmt.Println(dimStyle.Render(fmt.Sprintf("Checking pending jobs every %d seconds. Press Ctrl+C to terminate.", pollSec)))
+
+			sigCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+
+			return store.RunDaemon(sigCtx, time.Duration(pollSec)*time.Second, func(job flow.ScheduledJob) error {
+				fmt.Printf("[%s] 🚀 Triggering recurring flow: %s (%s)\n", time.Now().Format("15:04:05"), job.FlowName, job.CronExpr)
+				targetPath := resolveFlowPath(job.FlowPath)
+				f, err := flow.ParseFile(targetPath)
+				if err != nil {
+					fmt.Printf("   ❌ Flow parse error: %v\n", err)
+					return err
+				}
+
+				cwd, _ := os.Getwd()
+				branch := "unknown"
+				if st, err := app.GitEngine.GetStatus(cwd); err == nil {
+					branch = st.Branch
+				}
+				ctx := flow.NewContext(cwd, branch)
+				executor := flow.NewExecutor(f, ctx)
+				results, err := executor.Execute()
+				if err != nil {
+					fmt.Printf("   ❌ Flow execution failed: %v\n", err)
+					return err
+				}
+				fmt.Printf("   ✓ Flow executed successfully (%d steps)\n", len(results))
+				return nil
+			})
+		},
+	}
+	schedStartCmd.Flags().IntVarP(&pollSec, "interval", "i", 2, "Polling check interval in seconds")
+
+	flowScheduleCmd.AddCommand(schedAddCmd, schedListCmd, schedRemoveCmd, schedStartCmd)
+
+	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd, flowRecordCmd, flowReplayCmd, flowScheduleCmd)
 	return flowCmd
+}
+
+func listScheduledFlows() error {
+	store, err := flow.NewScheduleStore("")
+	if err != nil {
+		return err
+	}
+
+	jobs, err := store.Load()
+	if err != nil {
+		return err
+	}
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00BFFF"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
+	redStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+
+	fmt.Println(titleStyle.Render("⏰ Shellix Recurring Flow Schedules"))
+	fmt.Println(borderStyle.Render("──────────────────────────────────────────────────────────────────────────────────────────"))
+
+	if len(jobs) == 0 {
+		fmt.Println("No scheduled flows registered.")
+		fmt.Println(dimStyle.Render("Add a schedule with: sx flow schedule add <flow-name> \"*/15 * * * *\""))
+		fmt.Println()
+		return nil
+	}
+
+	fmt.Printf("%-14s %-20s %-16s %-10s %-18s %-18s %-6s\n",
+		headerStyle.Render("JOB ID"),
+		headerStyle.Render("FLOW"),
+		headerStyle.Render("CRON"),
+		headerStyle.Render("STATUS"),
+		headerStyle.Render("LAST RUN"),
+		headerStyle.Render("NEXT RUN"),
+		headerStyle.Render("RUNS"),
+	)
+	fmt.Println(borderStyle.Render("──────────────────────────────────────────────────────────────────────────────────────────"))
+
+	for _, j := range jobs {
+		status := greenStyle.Render("ENABLED")
+		if !j.Enabled {
+			status = dimStyle.Render("PAUSED")
+		} else if j.LastStatus == "FAILED" {
+			status = redStyle.Render("ERR_LAST")
+		}
+
+		lastRun := "-"
+		if !j.LastRun.IsZero() {
+			lastRun = j.LastRun.Format("01/02 15:04:05")
+		}
+
+		nextRun := "-"
+		if !j.NextRun.IsZero() {
+			nextRun = j.NextRun.Format("01/02 15:04:05")
+		}
+
+		fmt.Printf("%-14s %-20s %-16s %-10s %-18s %-18s %-6d\n",
+			dimStyle.Render(j.ID),
+			j.FlowName,
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#E0AF68")).Render(j.CronExpr),
+			status,
+			dimStyle.Render(lastRun),
+			greenStyle.Render(nextRun),
+			j.RunCount,
+		)
+	}
+
+	fmt.Println(borderStyle.Render("──────────────────────────────────────────────────────────────────────────────────────────"))
+	fmt.Printf("%s\n\n", dimStyle.Render("Start daemon runner: sx flow schedule start"))
+	return nil
 }
 
 func resolveFlowPath(nameOrPath string) string {

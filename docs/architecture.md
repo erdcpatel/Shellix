@@ -87,3 +87,25 @@ graph TD
 ### 3.10 Automated Flow File Watcher (`internal/flow`)
 - Recursive workspace file monitoring with debouncing (`RunWatcher`) and extension filtering.
 - Automatically clears screen and re-runs test/build pipelines upon filesystem changes with zero external runtime dependencies.
+
+### 3.11 HTTP & API Terminal Client & Diffing Engine (`internal/httpclient`)
+- High-precision network tracing via standard library `httptrace.ClientTrace`, measuring DNS lookup, TCP connection, TLS handshake, TTFB, and transfer duration down to microsecond resolution without external cURL binaries.
+- Automatic body format detection (JSON, XML, HTML, plaintext) with terminal color syntax highlighting.
+- High-concurrency endpoint comparison (`CompareEndpoints`) and recursive JSON structural diffing (`DiffJSON`), computing added/removed keys, value mismatches, and latency deltas.
+
+### 3.12 Project Environment & Secret Injection (`internal/envvault`)
+- Local hardware-authenticated secret management storing encrypted variables in workspace `.env.vault` files.
+- AES-256-GCM authenticated encryption with 12-byte cryptographically secure random nonces and tamper-evident authentication tags.
+- Automatic master key generation and persistence in native OS Credential Vault (Windows Credential Manager / macOS Keychain) keyed by workspace directory hash.
+- Zero-leak child process injection (`RunWithEnv`), spawning subprocesses with injected environment variables without writing secrets to shell history, disk logs, or parent environment.
+
+### 3.13 Flow Cron & Recurring Scheduler (`internal/flow`)
+- Pure Go cron expression parser supporting standard 5-part cron syntax (`minute hour dom month dow`), step increments (`*/15`), ranges (`1-5`), lists (`1,15,30`), and macro aliases (`@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`).
+- Persistent job scheduler backed by `~/.shellix/schedules.json` (`0600`), tracking `LastRun`, `NextRun`, `RunCount`, and outcome status (`SUCCESS` / `FAILED`).
+- Non-blocking daemon runner (`RunDaemon`) with polling loops and graceful OS interrupt signals (`SIGINT`/`SIGTERM`).
+
+### 3.14 Streaming Large File & JSON Diff Engine (`internal/jsonview`)
+- High-throughput streaming large file viewer (`StreamLargeFile`) operating on constant $O(\text{chunk size})$ memory footprint.
+- Chunked reverse-seek algorithm for `--tail`, seeking 64KB blocks backwards from end of file to immediately display the last $N$ lines of multi-gigabyte log files without reading from start.
+- JSONPath query evaluator (`EvaluateJSONPath`) supporting dot notation, array indexing (`items[0]`), and slice wildcards (`users[*].id`).
+- Deep JSON schema structural diff engine (`CompareJSONFiles`) computing schema similarity percentage, added keys, removed keys, and value changes.

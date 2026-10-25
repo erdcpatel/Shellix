@@ -48,14 +48,18 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewJavaCmd(app),
 		NewSSHCmd(app),
 		NewVaultCmd(app),
+		NewEnvCmd(app),
 		NewSessionCmd(app),
 		NewSearchCmd(app),
 		NewBookmarkCmd(app),
 		NewSnippetCmd(app),
 		NewHistoryCmd(app),
+		NewHTTPCmd(app),
 		NewPaletteCmd(app),
 		NewDoctorCmd(app),
 		NewInitCmd(app),
+		NewJSONCmd(app),
+		NewViewCmd(app),
 	)
 
 	return rootCmd

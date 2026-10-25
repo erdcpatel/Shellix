@@ -221,6 +221,65 @@ sx bm get <name>
 sx snip run <name>
 ```
 
+### 11. HTTP & API Terminal Client & Endpoint Diffing
+
+```bash
+# Execute HTTP request with microsecond network latency breakdown (DNS, TCP, TLS, TTFB)
+sx http get https://api.github.com/zen
+sx http post https://httpbin.org/post -d '{"event":"deploy"}' -H "Content-Type: application/json"
+sx http get https://httpbin.org/bearer -b "my_secret_token"
+
+# Deep structural diff between two API endpoints (staging vs production)
+sx http diff https://api.staging.example.com/v1/health https://api.prod.example.com/v1/health
+```
+
+### 12. Project Environment & Secret Injection (`.env.vault`)
+
+```bash
+# AES-256-GCM encrypted local environment store
+# Master key derived automatically from native OS Credential Vault
+sx env set API_KEY="sk_live_123" DATABASE_URL="postgres://user:pass@db:5432/app"
+
+# List masked variables (or unmask with --show)
+sx env list
+sx env list --show
+
+# Inject secrets directly into child process without leaking to shell history
+sx env run -- ./deploy.sh
+sx env export
+```
+
+### 13. Flow Cron & Recurring Scheduler
+
+```bash
+# Schedule flows using standard 5-part cron syntax or macros (@hourly, @daily, @weekly)
+sx flow schedule add build-and-test "*/15 * * * *"
+sx flow schedule add nightly-backup "@daily"
+
+# List all scheduled jobs with next trigger times and run counts
+sx flow schedule list
+
+# Run the background scheduler daemon
+sx flow schedule start
+sx flow schedule remove <job-id-or-flow>
+```
+
+### 14. Streaming Large File & JSON Query Engine
+
+```bash
+# High-throughput streaming log viewer (chunked reverse tail seek for gigabyte files)
+sx view /var/log/app.log -n 100 --tail
+sx view /var/log/app.log -f --search "ERROR"
+
+# JSONPath querying (.data.items[0], .users[*].id) from files or pipes
+sx json query ".data.items[0]" payload.json
+curl -s https://api.example.com/status | sx json query ".status"
+
+# Deep structural schema comparison between two JSON documents
+sx json diff v1_schema.json v2_schema.json
+sx json format data.json
+```
+
 ---
 
 ## Agent Best Practices
