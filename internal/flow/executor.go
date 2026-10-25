@@ -225,13 +225,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 			cmd.Dir = workDir
 		}
 
-		cmd.Env = os.Environ()
-		for k, v := range e.Flow.Env {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, e.Context.Interpolate(v)))
-		}
-		for k, v := range step.Env {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, e.Context.Interpolate(v)))
-		}
+		cmd.Env = buildSanitizedEnv(e.Flow.Env, step.Env, e.Context)
 
 		var buf bytes.Buffer
 		cmd.Stdout = &buf
@@ -241,6 +235,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		cancel()
 
 		finalOutput = strings.TrimSpace(buf.String())
+		e.Context.SetStepOutput(step.Name, finalOutput)
 
 		if err == nil {
 			return ExecutionResult{
@@ -274,4 +269,41 @@ func indent(text, prefix string) string {
 		lines[i] = prefix + line
 	}
 	return strings.Join(lines, "\n")
+}
+
+// buildSanitizedEnv constructs a safe execution environment, preventing ambient host secrets from leaking
+func buildSanitizedEnv(flowEnv, stepEnv map[string]string, ctx *Context) []string {
+	var safeEnv []string
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) == 2 {
+			if isSensitiveHostEnv(parts[0]) {
+				continue
+			}
+			safeEnv = append(safeEnv, env)
+		}
+	}
+
+	for k, v := range flowEnv {
+		safeEnv = append(safeEnv, fmt.Sprintf("%s=%s", k, ctx.Interpolate(v)))
+	}
+	for k, v := range stepEnv {
+		safeEnv = append(safeEnv, fmt.Sprintf("%s=%s", k, ctx.Interpolate(v)))
+	}
+	return safeEnv
+}
+
+func isSensitiveHostEnv(key string) bool {
+	k := strings.ToUpper(key)
+	sensitiveTokens := []string{
+		"AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "GITHUB_TOKEN", "GH_TOKEN",
+		"GITLAB_TOKEN", "SLACK_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK",
+		"DATABASE_PASSWORD", "PRIVATE_KEY", "SECRET_KEY", "AUTH_TOKEN",
+	}
+	for _, s := range sensitiveTokens {
+		if strings.Contains(k, s) {
+			return true
+		}
+	}
+	return false
 }

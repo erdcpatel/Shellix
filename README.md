@@ -74,7 +74,11 @@ sx pr create --title "..." # Open new pull request
 sx ci                     # Check CI workflow runs for current branch
 ```
 
-### 8. Developer Shortcuts
+### 8. System Doctor & Diagnostics
+Run deep environment health checks on Git, JDKs, Keyring, and SSH hardening:
+![System Doctor](docs/images/12_shellix_doctor.png)
+
+### 9. Developer Shortcuts
 Manage directory bookmarks and reusable command snippets:
 ![Shortcuts](docs/images/04_shellix_shortcuts.png)
 

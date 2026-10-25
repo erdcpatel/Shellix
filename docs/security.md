@@ -31,7 +31,24 @@ Shellix enforces operating-system level access controls:
 
 ---
 
-## 4. Modern Dependency & Supply Chain Hygiene
+## 4. SSH Host Key Hardening & MITM Protection
+
+Shellix integrates strict SSH host identity verification (`internal/ssh/client.go`):
+- **Known Hosts Verification**: Verifies server public keys against the user's `~/.ssh/known_hosts` file using `golang.org/x/crypto/ssh/knownhosts`.
+- **Strict MITM Detection**: If a remote server's host key changes, Shellix immediately aborts connection and raises a critical security warning to prevent Man-in-the-Middle attacks.
+- **Trust On First Use (TOFU)**: For newly visited hosts, Shellix safely captures and appends the initial public key fingerprint to `~/.ssh/known_hosts` with `0600` file permissions.
+
+---
+
+## 5. Subprocess Environment Isolation in Flows
+
+When executing multi-step build or automation flows (`internal/flow/executor.go`):
+- **Secret Isolation**: Ambient host environment variables containing sensitive tokens (AWS secrets, GitHub tokens, database passwords, private keys) are automatically stripped before spawning child processes.
+- **Explicit Ingress**: Only standard runtime environment variables (`PATH`, `HOME`, `JAVA_HOME`, etc.) and explicitly declared flow-level / step-level `env` blocks are passed to sub-tasks.
+
+---
+
+## 6. Modern Dependency & Supply Chain Hygiene
 
 Shellix maintains a strict dependency policy:
 - **Zero CGO**: Completely eliminates buffer overflow and memory corruption vulnerabilities from unmanaged C libraries.

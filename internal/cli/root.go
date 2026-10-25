@@ -38,6 +38,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewSearchCmd(app),
 		NewBookmarkCmd(app),
 		NewSnippetCmd(app),
+		NewDoctorCmd(app),
 	)
 
 	return rootCmd

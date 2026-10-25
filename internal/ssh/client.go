@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -9,8 +10,54 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
 )
+
+// getHostKeyCallback initializes secure known_hosts verification (Trust On First Use + Strict MITM protection)
+func getHostKeyCallback() (ssh.HostKeyCallback, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate home directory for SSH: %w", err)
+	}
+	knownHostsFile := filepath.Join(home, ".ssh", "known_hosts")
+	if _, err := os.Stat(knownHostsFile); os.IsNotExist(err) {
+		_ = os.MkdirAll(filepath.Dir(knownHostsFile), 0700)
+		f, createErr := os.OpenFile(knownHostsFile, os.O_CREATE|os.O_WRONLY, 0600)
+		if createErr == nil {
+			_ = f.Close()
+		}
+	}
+
+	khCallback, err := knownhosts.New(knownHostsFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse known_hosts (%s): %w", knownHostsFile, err)
+	}
+
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		err := khCallback(hostname, remote, key)
+		if err == nil {
+			return nil
+		}
+
+		var keyErr *knownhosts.KeyError
+		if errors.As(err, &keyErr) {
+			if len(keyErr.Want) > 0 {
+				// Host key mismatch: MITM detected!
+				return fmt.Errorf("CRITICAL SECURITY ERROR: Remote host identification for '%s' has changed (possible MITM attack)! Verification failed: %w", hostname, err)
+			}
+			// Host key not found: Trust On First Use (TOFU)
+			f, appendErr := os.OpenFile(knownHostsFile, os.O_APPEND|os.O_WRONLY, 0600)
+			if appendErr == nil {
+				defer f.Close()
+				line := knownhosts.Line([]string{hostname}, key)
+				_, _ = f.WriteString(line + "\n")
+				return nil
+			}
+		}
+		return err
+	}, nil
+}
 
 // Dial establishes an SSH connection to the target host
 func Dial(p HostProfile) (*ssh.Client, error) {
@@ -46,10 +93,15 @@ func Dial(p HostProfile) (*ssh.Client, error) {
 		return nil, fmt.Errorf("no usable SSH authentication method found for %s", p.Name)
 	}
 
+	hkCallback, err := getHostKeyCallback()
+	if err != nil {
+		return nil, err
+	}
+
 	config := &ssh.ClientConfig{
 		User:            p.User,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // Configurable in production
+		HostKeyCallback: hkCallback,
 		Timeout:         10 * time.Second,
 	}
 

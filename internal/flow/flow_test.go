@@ -124,3 +124,38 @@ steps:
 		t.Errorf("step 2 should have succeeded")
 	}
 }
+
+func TestStepOutputChaining(t *testing.T) {
+	yamlData := []byte(`
+name: output-chaining
+steps:
+  - name: generate
+    run: echo "shellix-token-42"
+  - name: consume
+    run: 'echo received: {{steps.generate.output}}'
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Output != "shellix-token-42" {
+		t.Errorf("expected step 0 output 'shellix-token-42', got '%s'", results[0].Output)
+	}
+	if results[1].Output != "received: shellix-token-42" {
+		t.Errorf("expected step 1 output 'received: shellix-token-42', got '%s'", results[1].Output)
+	}
+}

@@ -68,3 +68,42 @@ func TestSearchRegex(t *testing.T) {
 		t.Errorf("expected match on line 2, got %d", summary.Matches[0].LineNumber)
 	}
 }
+
+func TestSearchGitignore(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "shellix-search-gi-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	// Create .gitignore
+	_ = os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte("ignored_dir/\nsecret.txt\n*.log\n"), 0644)
+
+	// Create matching file in root
+	_ = os.WriteFile(filepath.Join(tempDir, "regular.go"), []byte("func ShellixMatch() {}\n"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "secret.txt"), []byte("func ShellixMatch() {}\n"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "debug.log"), []byte("func ShellixMatch() {}\n"), 0644)
+
+	// Create ignored subdir
+	subDir := filepath.Join(tempDir, "ignored_dir")
+	_ = os.MkdirAll(subDir, 0755)
+	_ = os.WriteFile(filepath.Join(subDir, "inner.go"), []byte("func ShellixMatch() {}\n"), 0644)
+
+	engine := NewEngine()
+	opts := SearchOptions{
+		Query: "ShellixMatch",
+		Paths: []string{tempDir},
+	}
+
+	summary, err := engine.Search(opts)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+
+	if summary.TotalMatches != 1 {
+		t.Fatalf("expected exactly 1 match (in regular.go), got %d matches", summary.TotalMatches)
+	}
+	if filepath.Base(summary.Matches[0].Path) != "regular.go" {
+		t.Errorf("expected match in regular.go, got %s", summary.Matches[0].Path)
+	}
+}

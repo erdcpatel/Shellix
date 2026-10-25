@@ -15,15 +15,24 @@ import (
 )
 
 var defaultIgnoredDirs = map[string]bool{
-	".git":         true,
-	"node_modules": true,
-	"vendor":       true,
-	".idea":        true,
-	".vscode":      true,
-	"bin":          true,
-	"dist":         true,
-	"target":       true,
-	"obj":          true,
+	".git":           true,
+	"node_modules":   true,
+	"vendor":         true,
+	".idea":          true,
+	".vscode":        true,
+	"bin":            true,
+	"dist":           true,
+	"target":         true,
+	"obj":            true,
+	".gradle":        true,
+	"build":          true,
+	".next":          true,
+	".nuxt":          true,
+	"coverage":       true,
+	".terraform":     true,
+	"__pycache__":     true,
+	".pytest_cache":  true,
+	".cache":         true,
 }
 
 // Engine implements high-speed parallel code search
@@ -99,17 +108,27 @@ func (e *Engine) Search(opts SearchOptions) (*SearchSummary, error) {
 		}()
 	}
 
-	// 2. Walk directories in background
+	// 2. Walk directories in background with .gitignore awareness
 	go func() {
 		for _, root := range opts.Paths {
+			giPatterns := loadGitignorePatterns(root)
 			_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
 					return nil
 				}
+				name := info.Name()
 				if info.IsDir() {
-					if defaultIgnoredDirs[info.Name()] {
+					if defaultIgnoredDirs[name] {
 						return filepath.SkipDir
 					}
+					rel, _ := filepath.Rel(root, path)
+					if len(giPatterns) > 0 && matchesAnyPattern(rel, name, giPatterns) {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				rel, _ := filepath.Rel(root, path)
+				if len(giPatterns) > 0 && matchesAnyPattern(rel, name, giPatterns) {
 					return nil
 				}
 				if !info.Mode().IsRegular() || info.Size() > opts.MaxFileSize {
@@ -182,4 +201,45 @@ func (e *Engine) searchFile(path string, maxSize int64, matchFn func(string) (bo
 
 func isBinary(data []byte) bool {
 	return bytes.IndexByte(data, 0) != -1
+}
+
+// loadGitignorePatterns loads pattern rules from a .gitignore file at the root
+func loadGitignorePatterns(root string) []string {
+	var patterns []string
+	giPath := filepath.Join(root, ".gitignore")
+	data, err := os.ReadFile(giPath)
+	if err != nil {
+		return patterns
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+	return patterns
+}
+
+// matchesAnyPattern determines whether a file or directory matches any gitignore rule
+func matchesAnyPattern(relPath, baseName string, patterns []string) bool {
+	cleanRel := filepath.ToSlash(relPath)
+	for _, p := range patterns {
+		p = strings.TrimSpace(p)
+		cleanP := strings.Trim(p, "/")
+		if baseName == cleanP {
+			return true
+		}
+		if matched, _ := filepath.Match(cleanP, baseName); matched {
+			return true
+		}
+		if matched, _ := filepath.Match(cleanP, cleanRel); matched {
+			return true
+		}
+		if strings.HasPrefix(cleanRel, cleanP+"/") {
+			return true
+		}
+	}
+	return false
 }
