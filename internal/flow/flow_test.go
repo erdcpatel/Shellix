@@ -359,7 +359,54 @@ steps:
 	if !strings.Contains(err.Error(), "dependency cycle detected") {
 		t.Errorf("expected 'dependency cycle detected' in error, got: %v", err)
 	}
+
+	// Mixed valid steps and disconnected cycle: valid-1 -> valid-2, and cycle-x <-> cycle-y
+	mixedCycle := []byte(`
+name: mixed-cycle
+steps:
+  - name: valid-1
+    run: echo "v1"
+  - name: valid-2
+    depends_on: [valid-1]
+    run: echo "v2"
+  - name: cycle-x
+    depends_on: [cycle-y]
+    run: echo "cx"
+  - name: cycle-y
+    depends_on: [cycle-x]
+    run: echo "cy"
+`)
+	_, err = Parse(mixedCycle)
+	if err == nil {
+		t.Fatalf("expected error for mixed cycle, got nil")
+	}
+	if !strings.Contains(err.Error(), "dependency cycle detected") {
+		t.Errorf("expected 'dependency cycle detected' in error, got: %v", err)
+	}
 }
+
+func TestDuplicateDependenciesTopologicalSort(t *testing.T) {
+	yamlData := []byte(`
+name: dup-deps
+steps:
+  - name: step-1
+    run: echo "s1"
+  - name: step-2
+    depends_on: [step-1, step-1]
+    run: echo "s2"
+`)
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(f.Steps) != 2 || f.Steps[0].Name != "step-1" || f.Steps[1].Name != "step-2" {
+		t.Errorf("expected [step-1, step-2], got %+v", f.Steps)
+	}
+	if len(f.Steps[1].DependsOn) != 1 {
+		t.Errorf("expected deduplicated DependsOn length 1, got %d", len(f.Steps[1].DependsOn))
+	}
+}
+
 
 func TestTopologicalSorting(t *testing.T) {
 	// Step C depends on B, Step B depends on A. Defined in reverse order: C, B, A.

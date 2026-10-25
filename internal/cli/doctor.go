@@ -124,12 +124,17 @@ func runDoctorDiagnostics(app *AppContext) {
 	testVal := "probe_val"
 	testErr := keyring.Set(vault.ServiceName, testKey, testVal)
 	if testErr == nil {
-		_, getErr := keyring.Get(vault.ServiceName, testKey)
-		_ = keyring.Delete(vault.ServiceName, testKey)
-		if getErr == nil {
+		defer func() { _ = keyring.Delete(vault.ServiceName, testKey) }()
+		gotVal, getErr := keyring.Get(vault.ServiceName, testKey)
+		delErr := keyring.Delete(vault.ServiceName, testKey)
+		if getErr == nil && delErr == nil && gotVal == testVal {
 			check("security", "Native OS Keyring", true, false, fmt.Sprintf("%s operational", v.ProviderName()))
-		} else {
+		} else if getErr != nil {
 			check("security", "Native OS Keyring", false, true, fmt.Sprintf("OS Keyring read failed: %v", getErr))
+		} else if gotVal != testVal {
+			check("security", "Native OS Keyring", false, true, fmt.Sprintf("OS Keyring value mismatch (expected %s, got %s)", testVal, gotVal))
+		} else {
+			check("security", "Native OS Keyring", false, true, fmt.Sprintf("OS Keyring delete failed: %v", delErr))
 		}
 	} else {
 		check("security", "Native OS Keyring", false, true, fmt.Sprintf("OS Keyring unavailable: %v", testErr))

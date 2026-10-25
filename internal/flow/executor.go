@@ -80,9 +80,21 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 		// 1. Check if this begins a batch of parallel steps
 		if current.Parallel {
 			batch := []Step{current}
+			batchStepNames := map[string]bool{current.Name: true}
 			j := i + 1
 			for j < len(e.Flow.Steps) && e.Flow.Steps[j].Parallel {
+				hasDepInBatch := false
+				for _, dep := range e.Flow.Steps[j].DependsOn {
+					if batchStepNames[dep] {
+						hasDepInBatch = true
+						break
+					}
+				}
+				if hasDepInBatch {
+					break
+				}
 				batch = append(batch, e.Flow.Steps[j])
+				batchStepNames[e.Flow.Steps[j].Name] = true
 				j++
 			}
 

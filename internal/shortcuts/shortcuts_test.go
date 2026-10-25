@@ -78,4 +78,14 @@ func TestBookmarksAndSnippets(t *testing.T) {
 	if fi.Mode().Perm() != 0600 {
 		t.Errorf("expected 0600 file permissions, got %04o", fi.Mode().Perm())
 	}
+
+	// Verify directory permissions (0700)
+	fiDir, err := os.Stat(tempDir)
+	if err != nil {
+		t.Fatalf("stat dir failed: %v", err)
+	}
+	if fiDir.Mode().Perm() != 0700 {
+		t.Errorf("expected 0700 dir permissions, got %04o", fiDir.Mode().Perm())
+	}
 }
+

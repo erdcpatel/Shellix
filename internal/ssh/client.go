@@ -51,7 +51,9 @@ func getHostKeyCallback() (ssh.HostKeyCallback, error) {
 			if appendErr == nil {
 				defer f.Close()
 				line := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)
-				_, _ = f.WriteString(line + "\n")
+				if _, writeErr := f.WriteString(line + "\n"); writeErr != nil {
+					return fmt.Errorf("failed to record host key to %s: %w", knownHostsFile, writeErr)
+				}
 				return nil
 			}
 		}

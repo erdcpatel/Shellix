@@ -157,3 +157,102 @@ steps:
 		t.Errorf("expected step 1 to succeed")
 	}
 }
+
+func TestParallelStepsWithInterdependencies(t *testing.T) {
+	yamlData := []byte(`
+name: parallel-interdep-test
+steps:
+  - name: step-1
+    parallel: true
+    run: echo "step1"
+  - name: step-2
+    parallel: true
+    depends_on: [step-1]
+    run: echo "step2"
+  - name: step-3
+    parallel: true
+    depends_on: [step-1]
+    run: echo "step3"
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution should succeed, got: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	for _, r := range results {
+		if !r.Success || r.Skipped {
+			t.Errorf("expected step %s to succeed, got success=%v, skipped=%v, output=%s",
+				r.StepName, r.Success, r.Skipped, r.Output)
+		}
+	}
+}
+
+func TestParallelDiamondDAG(t *testing.T) {
+	// Reverse definition order diamond: D (depends on B, C), C (depends on A), B (depends on A), A
+	yamlData := []byte(`
+name: diamond-dag-test
+steps:
+  - name: step-d
+    parallel: true
+    depends_on: [step-b, step-c]
+    run: echo "d-done"
+  - name: step-c
+    parallel: true
+    depends_on: [step-a]
+    run: echo "c-done"
+  - name: step-b
+    parallel: true
+    depends_on: [step-a]
+    run: echo "b-done"
+  - name: step-a
+    parallel: true
+    run: echo "a-done"
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	if f.Steps[0].Name != "step-a" {
+		t.Errorf("expected step-a first, got %s", f.Steps[0].Name)
+	}
+	if f.Steps[3].Name != "step-d" {
+		t.Errorf("expected step-d last, got %s", f.Steps[3].Name)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution should succeed, got: %v", err)
+	}
+
+	if len(results) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(results))
+	}
+
+	for _, r := range results {
+		if !r.Success || r.Skipped {
+			t.Errorf("step %s should have succeeded, got success=%v, skipped=%v, output=%s",
+				r.StepName, r.Success, r.Skipped, r.Output)
+		}
+	}
+}
+
+

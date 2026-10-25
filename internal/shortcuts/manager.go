@@ -29,8 +29,15 @@ func NewManager(customPath string) (*Manager, error) {
 			return nil, err
 		}
 		dir := filepath.Join(home, ".shellix")
-		_ = core.EnsureSecureDir(dir)
+		if err := core.EnsureSecureDir(dir); err != nil {
+			return nil, err
+		}
 		path = filepath.Join(dir, "shortcuts.json")
+	} else {
+		dir := filepath.Dir(customPath)
+		if err := core.EnsureSecureDir(dir); err != nil {
+			return nil, err
+		}
 	}
 
 	mgr := &Manager{
