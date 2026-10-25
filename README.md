@@ -29,6 +29,26 @@ Traditional terminals and toolchains on Windows and cross-platform environments 
 
 ---
 
+## 📸 Screenshots & UI Walkthrough
+
+### 1. Instant Status & Banner
+Sub-2ms Git inspection directly from disk:
+![Instant Status](docs/images/01_shellix_status.png)
+
+### 2. Flow Automation Engine
+Run declarative pipelines with progress tracking and variable interpolation:
+![Flow Engine](docs/images/02_shellix_flow.png)
+
+### 3. Multi-Repo Parallel Search
+Search across multiple codebases with syntax-highlighted matching lines:
+![Search Engine](docs/images/03_shellix_search.png)
+
+### 4. Developer Shortcuts
+Manage directory bookmarks and reusable command snippets:
+![Shortcuts](docs/images/04_shellix_shortcuts.png)
+
+---
+
 ## 🚀 Key Features
 
 1. **Dual-Engine Git Layer**:
