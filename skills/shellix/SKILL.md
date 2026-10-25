@@ -19,10 +19,11 @@ Use `sx` whenever you need to:
 
 ## Command Reference for Agents
 
-### 1. Git Inspection & Operations
+### 1. Git Operations & Dashboard
 
 | Command | Purpose | Expected Output / Behavior |
 |---|---|---|
+| `sx g` or `sx git` | Interactive full-screen Git Dashboard | Keyboard-driven TUI to stage (`s`), unstage (`u`), commit (`c`), view live diffs, push (`p`), pull (`P`) |
 | `sx g s` or `sx git status` | Sub-2ms repository status | Current branch, latest commit hash/author, staged, unstaged, untracked files |
 | `sx g <any-git-arg>` | Transparent native Git passthrough | Runs system Git directly with native speed |
 

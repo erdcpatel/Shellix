@@ -1,66 +1,65 @@
-# Dual-Engine Git Architecture & Guide
+# Dual-Engine Git & Interactive Dashboard
 
-Shellix includes a high-performance **dual-engine Git layer** designed to eliminate terminal lag, especially on Windows where Git Bash MSYS2 emulation adds significant delay.
-
----
-
-## 1. The Performance Problem in Traditional Terminals
-
-On Windows systems, running `git status` inside Git Bash involves:
-1. `mintty.exe` forwarding user input to `bash.exe`.
-2. `bash.exe` emulating POSIX system calls via `msys-2.0.dll`.
-3. `bash` calling `fork()` and `execve()` to spawn `git.exe`.
-4. Windows translating POSIX fork calls through an emulation wrapper, consuming **150ms–500ms** per execution.
-
-In contrast, Shellix reads the `.git` directory directly using Go's in-process filesystem routines:
-- **No external process creation.**
-- **No POSIX translation layer.**
-- **Sub-3ms execution.**
+Shellix includes a high-performance **dual-engine Git layer** and a **full-screen interactive Git TUI dashboard** designed to completely replace Git Bash and heavy GUI clients like lazygit.
 
 ---
 
-## 2. Benchmark Comparison
-
-| Operation | Git Bash (Windows MSYS2) | PowerShell + `git.exe` | Shellix (`sx g s`) |
-|---|---|---|---|
-| **`git status` (clean repo)** | ~280ms | ~95ms | **~1.8ms (150x faster)** |
-| **`git status` (100 files changed)** | ~410ms | ~140ms | **~4.5ms (90x faster)** |
-| **Branch inspection** | ~120ms | ~75ms | **< 1.0ms** |
-
----
-
-## 3. Dual-Engine Dispatch Flow
+## 1. Dual-Engine Dispatch Architecture
 
 ```
-                      User runs: sx g <args>
+                      User runs: sx g [args...]
                                 │
-                                ▼
-                   ┌───────────────────────────┐
-                   │ Is it status/branch query?│
-                   └─────────────┬─────────────┘
-                                 │
-                 Yes ────────────┴──────────── No
-                  │                             │
-                  ▼                             ▼
-       ┌─────────────────────┐       ┌───────────────────────┐
-       │ In-Process go-git   │       │ Native git executable │
-       │ Instant execution   │       │ Transparent execution │
-       └─────────────────────┘       └───────────────────────┘
+          ┌─────────────────────┼─────────────────────┐
+          │                     │                     │
+      (no args)           ("status" / "s")        (other args)
+          │                     │                     │
+          ▼                     ▼                     ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────────┐
+│ Interactive TUI   │ │ In-Process go-git │ │ Native git execution  │
+│ Full-screen Bubble│ │ Sub-2ms status    │ │ Transparent fallback  │
+│ Tea Git Dashboard │ │ report            │ │ for rebase, pull, etc.│
+└───────────────────┘ └───────────────────┘ └───────────────────────┘
 ```
 
 ---
 
-## 4. Usage Examples
+## 2. Interactive Git Dashboard (`sx g`)
 
+Running `sx g` (or `sx git`) without arguments launches an interactive keyboard-driven dashboard:
+
+![Interactive Git Dashboard](images/11_shellix_git_tui.png)
+
+### Layout:
+- **Header Bar**: Active branch, latest commit hash, and repository status.
+- **Left Panel (Changes)**: Displays staged files (`[S]` in green), unstaged files (`[M]` in red), and untracked files (`[?]` in blue).
+- **Right Panel (Live Diff Viewer)**: Live syntax-highlighted diff for the selected file (`+` lines in green, `-` lines in red, `@@` hunk headers in cyan).
+- **Status & Footer Bar**: Real-time feedback messages and commit prompt.
+
+### Keyboard Shortcuts:
+
+| Key | Action |
+|---|---|
+| `↑` / `k` | Move cursor up in file list |
+| `↓` / `j` | Move cursor down in file list |
+| `s` | **Stage** the currently selected file |
+| `u` | **Unstage** the currently selected file |
+| `a` | **Stage all** changes (`git add -A`) |
+| `c` | Open inline **commit** input bar |
+| `Enter` (in commit) | Commit staged changes with message |
+| `Esc` (in commit) | Cancel commit |
+| `p` | **Push** to remote (`git push`) |
+| `P` | **Pull** from remote (`git pull`) |
+| `r` | **Refresh** status from disk |
+| `q` / `Ctrl+C` | Quit dashboard |
+
+---
+
+## 3. Instant CLI Status (`sx g s`)
+
+When you simply want a quick text report without entering the interactive dashboard, use:
 ```bash
-# High-speed status
 sx g s
 # or
 sx git status
-
-# Native commands (delegated seamlessly)
-sx g add .
-sx g commit -m "feat: new feature"
-sx g push origin main
-sx g log -n 5 --graph --decorate
 ```
+This queries the repository in-memory via `go-git` in **~1.5ms to 2.5ms** with zero fork or MSYS2 emulation overhead.

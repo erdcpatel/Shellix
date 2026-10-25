@@ -31,7 +31,11 @@ Traditional terminals and toolchains on Windows and cross-platform environments 
 
 ## 📸 Screenshots & UI Walkthrough
 
-### 1. Instant Status & Banner
+### 1. Interactive Git Dashboard (`sx g`)
+Full-screen, keyboard-driven dashboard to stage (`s`), unstage (`u`), commit (`c`), and view live syntax-highlighted diffs:
+![Interactive Git Dashboard](docs/images/11_shellix_git_tui.png)
+
+### 2. Instant Status & Banner
 Sub-2ms Git inspection directly from disk:
 ![Instant Status](docs/images/01_shellix_status.png)
 
