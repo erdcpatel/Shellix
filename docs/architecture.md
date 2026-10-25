@@ -39,9 +39,13 @@ graph TD
 
 ### 3.2 Automation Flow Engine (`internal/flow`)
 - Parses declarative YAML workflows with cycle detection (Kahn's algorithm).
-- Sorts steps topologically based on `depends_on: []` prerequisites.
-- Evaluates conditional gating (`if: ""`) and variable interpolation (`{{project_root}}`, `{{git.branch}}`, `{{steps.<name>.output}}`).
-- Manages timeouts, retries, step failure policies (`abort`, `continue`, `retry`), and sequential/parallel execution.
+- Sorts steps topologically based on `depends_on: []` prerequisites and groups steps into chronological concurrent execution waves (`ComputeExecutionWaves`).
+- Evaluates conditional gating (`if: ""`) and dynamic variable/parameter interpolation (`{{project_root}}`, `{{git.branch}}`, `{{params.<key>}}`, `{{steps.<name>.output}}`).
+- Manages step timeouts with context cancellation, retries with exponential backoff, and step failure policies (`abort`, `continue`, `retry`).
+- Interactive approval gates (`prompt: "..."`) requiring manual terminal confirmation (`y/N`) or `--yes` bypass.
+- Artifact preservation (`CollectArtifacts`): globs build outputs, writes `manifest.json`, and archives artifacts into `~/.shellix/artifacts/<flow>/<run-id>/`.
+- Cross-platform desktop alerts (PowerShell `NotifyIcon` BalloonTip/Toast on Windows, `osascript` on macOS) and HTTP webhook delivery upon flow completion.
+- Dry-run execution blueprints (`sx flow plan`) and live Mermaid flowchart generation (`sx flow plan --mermaid`).
 - Generates comprehensive, secret-sanitized execution audit logs with `0600` permissions.
 
 ### 3.3 Remote SSH & Port Forwarding (`internal/ssh`)

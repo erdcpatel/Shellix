@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -22,6 +23,8 @@ type Executor struct {
 	Flow        *Flow
 	Context     *Context
 	Silent      bool
+	AutoConfirm bool
+	RunID       string
 	Logger      *FlowLogger
 	OnEvent     func(event FlowEvent)
 	mu          sync.RWMutex
@@ -31,9 +34,13 @@ type Executor struct {
 // NewExecutor creates a runner for a given flow and context
 func NewExecutor(f *Flow, ctx *Context) *Executor {
 	logger, _ := NewFlowLogger(f.Name)
+	if ctx != nil && f.Params != nil {
+		ctx.ApplyFlowDefaults(f.Params)
+	}
 	return &Executor{
 		Flow:        f,
 		Context:     ctx,
+		RunID:       fmt.Sprintf("run_%s", time.Now().Format("20060102_150405")),
 		Logger:      logger,
 		stepResults: make(map[string]ExecutionResult),
 	}
@@ -224,6 +231,24 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 		}
 	}
 
+	// Trigger notifications
+	if success {
+		if e.Flow.Notify.OnSuccess {
+			_ = SendDesktopNotification("Shellix Flow Succeeded", fmt.Sprintf("Flow '%s' completed successfully in %s", e.Flow.Name, totalDuration.Round(time.Millisecond)), true)
+		}
+	} else {
+		if e.Flow.Notify.OnFailure {
+			_ = SendDesktopNotification("Shellix Flow Failed", fmt.Sprintf("Flow '%s' failed in %s", e.Flow.Name, totalDuration.Round(time.Millisecond)), false)
+		}
+	}
+	if e.Flow.Notify.Webhook != "" {
+		errMsg := ""
+		if flowErr != nil {
+			errMsg = flowErr.Error()
+		}
+		_ = SendWebhookNotification(e.Flow.Notify.Webhook, e.Flow.Name, success, totalDuration, errMsg)
+	}
+
 	if e.OnEvent != nil {
 		e.OnEvent(FlowEvent{
 			Type:     EventFlowDone,
@@ -307,6 +332,34 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		}
 	}
 
+	// 3. Manual approval gate
+	if step.Prompt != "" {
+		promptText := e.Context.Interpolate(step.Prompt)
+		if e.AutoConfirm {
+			if !e.Silent {
+				fmt.Printf("   [Auto-approved gate: %q]\n", promptText)
+			}
+		} else {
+			warnStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFA500"))
+			fmt.Printf("\n%s %s [y/N]: ", warnStyle.Render("⚠️  Approval Gate:"), promptText)
+			reader := bufio.NewReader(os.Stdin)
+			line, _ := reader.ReadString('\n')
+			trimmed := strings.ToLower(strings.TrimSpace(line))
+			if trimmed != "y" && trimmed != "yes" {
+				res := ExecutionResult{
+					StepName:   step.Name,
+					Duration:   0,
+					Success:    false,
+					Skipped:    true,
+					Error:      fmt.Errorf("manual approval declined for step '%s'", step.Name),
+					Output:     "Manual approval declined by user",
+					IsParallel: isParallel,
+				}
+				return e.finishStep(res, isParallel)
+			}
+		}
+	}
+
 	start := time.Now()
 	var finalErr error
 	var finalOutput string
@@ -358,12 +411,25 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		e.Context.SetStepResult(step.Name, finalOutput, exitCode, stepDuration)
 
 		if err == nil {
+			var collected []string
+			if len(step.Artifacts) > 0 {
+				targetDir := workDir
+				if targetDir == "" {
+					targetDir = e.Context.ProjectRoot
+				}
+				if targetDir == "" {
+					targetDir, _ = os.Getwd()
+				}
+				collected, _ = CollectArtifacts(e.Flow.Name, e.RunID, targetDir, step.Artifacts)
+			}
 			res := ExecutionResult{
-				StepName:   step.Name,
-				Duration:   stepDuration,
-				Success:    true,
-				Output:     finalOutput,
-				IsParallel: isParallel,
+				StepName:       step.Name,
+				Duration:       stepDuration,
+				Success:        true,
+				Output:         finalOutput,
+				IsParallel:     isParallel,
+				PromptApproved: step.Prompt != "",
+				CollectedFiles: collected,
 			}
 			return e.finishStep(res, isParallel)
 		}

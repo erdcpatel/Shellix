@@ -1,0 +1,37 @@
+name: release-pipeline
+description: Enterprise release automation pipeline with parameterization and gates
+params:
+  env: staging
+  version: 0.1.0-alpha
+
+notify:
+  on_success: true
+  on_failure: true
+
+steps:
+  - name: lint-and-test
+    run: go test -short ./internal/flow/...
+    timeout: 30s
+
+  - name: verify-git-state
+    run: echo "Current release branch is {{git_branch}} targeting {{params.env}}"
+    timeout: 10s
+
+  - name: compile-binaries
+    run: echo "Building release v{{params.version}} for {{params.env}}"
+    depends_on:
+      - lint-and-test
+      - verify-git-state
+    artifacts:
+      - "bin/*"
+
+  - name: approval-gate
+    run: echo "Proceeding with distribution to {{params.env}}"
+    depends_on:
+      - compile-binaries
+    prompt: "Authorize deployment of v{{params.version}} to environment '{{params.env}}'?"
+
+  - name: publish-release
+    run: echo "Successfully distributed v{{params.version}} to {{params.env}}"
+    depends_on:
+      - approval-gate

@@ -16,6 +16,7 @@ type Context struct {
 	mu          sync.RWMutex
 	ProjectRoot string
 	GitBranch   string
+	Params      map[string]string
 	CustomVars  map[string]string
 }
 
@@ -24,7 +25,30 @@ func NewContext(projectRoot, gitBranch string) *Context {
 	return &Context{
 		ProjectRoot: projectRoot,
 		GitBranch:   gitBranch,
+		Params:      make(map[string]string),
 		CustomVars:  make(map[string]string),
+	}
+}
+
+// SetParam registers a CLI or flow parameter override
+func (ctx *Context) SetParam(key, val string) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	ctx.Params[key] = val
+	ctx.CustomVars["params."+key] = val
+	ctx.CustomVars["param."+key] = val
+}
+
+// ApplyFlowDefaults initializes parameters declared in the flow if not already set by CLI
+func (ctx *Context) ApplyFlowDefaults(flowParams map[string]string) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	for k, v := range flowParams {
+		if _, exists := ctx.Params[k]; !exists {
+			ctx.Params[k] = v
+			ctx.CustomVars["params."+k] = v
+			ctx.CustomVars["param."+k] = v
+		}
 	}
 }
 
@@ -54,7 +78,7 @@ func (ctx *Context) SetStepResult(stepName, output string, exitCode int, duratio
 	ctx.CustomVars["prev.exit_code"] = fmt.Sprintf("%d", exitCode)
 }
 
-// Interpolate substitutes placeholders like {{project_root}}, {{env.PATH}}, or {{steps.build.output}}
+// Interpolate substitutes placeholders like {{project_root}}, {{params.env}}, {{env.PATH}}, or {{steps.build.output}}
 func (ctx *Context) Interpolate(input string) string {
 	if input == "" {
 		return ""
@@ -70,6 +94,20 @@ func (ctx *Context) Interpolate(input string) string {
 		if strings.HasPrefix(key, "env.") {
 			envKey := strings.TrimPrefix(key, "env.")
 			return os.Getenv(envKey)
+		}
+
+		// Parameter prefix: {{params.KEY}} or {{param.KEY}}
+		if strings.HasPrefix(key, "params.") {
+			pKey := strings.TrimPrefix(key, "params.")
+			if val, ok := ctx.Params[pKey]; ok {
+				return val
+			}
+		}
+		if strings.HasPrefix(key, "param.") {
+			pKey := strings.TrimPrefix(key, "param.")
+			if val, ok := ctx.Params[pKey]; ok {
+				return val
+			}
 		}
 
 		switch key {

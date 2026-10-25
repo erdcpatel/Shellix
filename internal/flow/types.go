@@ -13,6 +13,13 @@ const (
 	OnFailureRetry    FailurePolicy = "retry"
 )
 
+// NotificationConfig configures desktop alerts and webhook hooks
+type NotificationConfig struct {
+	OnSuccess bool   `yaml:"on_success,omitempty"`
+	OnFailure bool   `yaml:"on_failure,omitempty"`
+	Webhook   string `yaml:"webhook,omitempty"`
+}
+
 // Step represents a single unit of execution within a Flow
 type Step struct {
 	Name        string            `yaml:"name"`
@@ -28,26 +35,32 @@ type Step struct {
 	Parallel    bool              `yaml:"parallel,omitempty"`
 	DependsOn   []string          `yaml:"depends_on,omitempty"`
 	If          string            `yaml:"if,omitempty"`
+	Prompt      string            `yaml:"prompt,omitempty"` // Interactive approval gate
+	Artifacts   []string          `yaml:"artifacts,omitempty"` // File patterns to collect
 	Env         map[string]string `yaml:"env,omitempty"`
 }
 
 // Flow represents a declarative pipeline
 type Flow struct {
-	Name        string            `yaml:"name"`
-	Description string            `yaml:"description,omitempty"`
-	Env         map[string]string `yaml:"env,omitempty"`
-	Steps       []Step            `yaml:"steps"`
+	Name        string             `yaml:"name"`
+	Description string             `yaml:"description,omitempty"`
+	Params      map[string]string  `yaml:"params,omitempty"` // Default parameter definitions
+	Notify      NotificationConfig `yaml:"notify,omitempty"` // Desktop / Webhook notifications
+	Env         map[string]string  `yaml:"env,omitempty"`
+	Steps       []Step             `yaml:"steps"`
 }
 
 // ExecutionResult captures the output and status of a flow step
 type ExecutionResult struct {
-	StepName   string
-	Duration   time.Duration
-	Success    bool
-	Skipped    bool
-	Error      error
-	Output     string
-	IsParallel bool
+	StepName        string
+	Duration        time.Duration
+	Success         bool
+	Skipped         bool
+	Error           error
+	Output          string
+	IsParallel      bool
+	PromptApproved  bool
+	CollectedFiles  []string
 }
 
 // FlowEventType denotes state changes during workflow execution

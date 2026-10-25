@@ -22,6 +22,7 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	var skipConfirm bool
 	var useTUI bool
 	var watchMode bool
+	var setParams []string
 
 	flowCmd := &cobra.Command{
 		Use:   "flow",
@@ -67,6 +68,13 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			}()
 
 			ctx := flow.NewContext(cwd, branch)
+			for _, p := range setParams {
+				parts := strings.SplitN(p, "=", 2)
+				if len(parts) == 2 {
+					ctx.SetParam(parts[0], parts[1])
+				}
+			}
+
 			if watchMode {
 				sigCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 				defer cancel()
@@ -85,6 +93,7 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			}
 
 			executor := flow.NewExecutor(f, ctx)
+			executor.AutoConfirm = skipConfirm
 			_, runErr = executor.Execute()
 			return runErr
 		},
@@ -92,6 +101,7 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	flowRunCmd.Flags().BoolVarP(&useTUI, "tui", "t", false, "Launch full-screen interactive Bubble Tea flow dashboard")
 	flowRunCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch directory for file changes and re-run flow")
 	flowRunCmd.Flags().BoolVarP(&skipConfirm, "yes", "y", false, "Execute flow without confirmation prompt")
+	flowRunCmd.Flags().StringArrayVarP(&setParams, "set", "s", nil, "Set parameter values (e.g. --set env=prod --set version=1.2.0)")
 
 	var watchExts string
 	flowWatchCmd := &cobra.Command{
@@ -153,6 +163,13 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			}
 
 			ctx := flow.NewContext(cwd, branch)
+			for _, p := range setParams {
+				parts := strings.SplitN(p, "=", 2)
+				if len(parts) == 2 {
+					ctx.SetParam(parts[0], parts[1])
+				}
+			}
+
 			start := time.Now()
 			var runErr error
 			defer func() {
@@ -168,6 +185,115 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 
 			runErr = flow.RunFlowTUI(f, ctx)
 			return runErr
+		},
+	}
+	flowTUICmd.Flags().StringArrayVarP(&setParams, "set", "s", nil, "Set parameter values (e.g. --set env=prod --set version=1.2.0)")
+
+	var planMermaid bool
+	flowPlanCmd := &cobra.Command{
+		Use:               "plan <flow-name-or-path>",
+		Short:             "Preview execution waves, dependencies, and parameter bindings without running",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeFlowNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			targetPath := resolveFlowPath(args[0])
+			f, err := flow.ParseFile(targetPath)
+			if err != nil {
+				return err
+			}
+
+			cwd, _ := os.Getwd()
+			branch := "unknown"
+			if st, err := app.GitEngine.GetStatus(cwd); err == nil {
+				branch = st.Branch
+			}
+
+			ctx := flow.NewContext(cwd, branch)
+			if f.Params != nil {
+				ctx.ApplyFlowDefaults(f.Params)
+			}
+			for _, p := range setParams {
+				parts := strings.SplitN(p, "=", 2)
+				if len(parts) == 2 {
+					ctx.SetParam(parts[0], parts[1])
+				}
+			}
+
+			if planMermaid {
+				fmt.Print(flow.RenderMermaid(f))
+				return nil
+			}
+
+			fmt.Print(flow.RenderFlowPlan(f, ctx))
+			return nil
+		},
+	}
+	flowPlanCmd.Flags().BoolVarP(&planMermaid, "mermaid", "m", false, "Output execution DAG as a Mermaid flowchart diagram")
+	flowPlanCmd.Flags().StringArrayVarP(&setParams, "set", "s", nil, "Set parameter values (e.g. --set env=prod --set version=1.2.0)")
+
+	flowArtifactsCmd := &cobra.Command{
+		Use:               "artifacts [flow-name]",
+		Short:             "Inspect preserved workflow build artifacts",
+		ValidArgsFunction: completeFlowNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				baseDir := flow.GetArtifactsBaseDir()
+				entries, err := os.ReadDir(baseDir)
+				if err != nil || len(entries) == 0 {
+					fmt.Println("No workflow artifacts found yet in ~/.shellix/artifacts/")
+					return nil
+				}
+				titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+				dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+				fmt.Println(titleStyle.Render("📦 Preserved Workflow Artifacts"))
+				for _, e := range entries {
+					if e.IsDir() {
+						manifests, _ := flow.ListArtifactRuns(e.Name())
+						fmt.Printf("  • %-24s (%d recorded runs)\n", e.Name(), len(manifests))
+					}
+				}
+				fmt.Println(dimStyle.Render("\nView artifacts for a flow: sx flow artifacts <flow-name>"))
+				return nil
+			}
+
+			flowName := args[0]
+			if strings.HasSuffix(flowName, ".yaml") || strings.HasSuffix(flowName, ".yml") {
+				flowName = strings.TrimSuffix(filepath.Base(flowName), filepath.Ext(flowName))
+			}
+
+			manifests, err := flow.ListArtifactRuns(flowName)
+			if err != nil {
+				return err
+			}
+			if len(manifests) == 0 {
+				fmt.Printf("No artifacts recorded for flow %q\n", flowName)
+				return nil
+			}
+
+			titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+			keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00BFFF"))
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+			borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
+
+			fmt.Println(titleStyle.Render(fmt.Sprintf("📦 Workflow Artifacts: %s (%d runs)", flowName, len(manifests))))
+			fmt.Println(borderStyle.Render("─────────────────────────────────────────────────────────────────────────────"))
+
+			for _, m := range manifests {
+				var totalBytes int64
+				for _, f := range m.Files {
+					totalBytes += f.Size
+				}
+				fmt.Printf("Run ID: %s | %s | %s total\n",
+					keyStyle.Render(m.RunID),
+					dimStyle.Render(m.Timestamp.Format("2006-01-02 15:04:05")),
+					flow.FormatFileSize(totalBytes),
+				)
+				for _, f := range m.Files {
+					fmt.Printf("  ├── %-24s (%s) -> %s\n", f.Name, flow.FormatFileSize(f.Size), dimStyle.Render(f.Path))
+				}
+				fmt.Println()
+			}
+			return nil
 		},
 	}
 
@@ -519,7 +645,7 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	daemonServiceCmd.AddCommand(daemonInstallCmd, daemonUninstallCmd, daemonStatusCmd)
 	flowScheduleCmd.AddCommand(schedAddCmd, schedListCmd, schedRemoveCmd, schedStartCmd, schedLogsCmd, daemonServiceCmd)
 
-	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd, flowRecordCmd, flowReplayCmd, flowScheduleCmd)
+	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd, flowRecordCmd, flowReplayCmd, flowScheduleCmd, flowPlanCmd, flowArtifactsCmd)
 	return flowCmd
 }
 

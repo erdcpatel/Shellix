@@ -59,23 +59,51 @@ sx flow replay my-pipeline
 # Inspect execution audit logs
 sx flow logs
 sx flow logs <filename.log>
+
+# Dry-run execution blueprint, parameter overrides, and waves
+sx flow plan <flow-name>
+sx flow plan <flow-name> --set env=prod --set version=2.0.0
+sx flow plan <flow-name> --mermaid
+
+# Inspect preserved workflow build artifacts
+sx flow artifacts
+sx flow artifacts <flow-name>
 ```
 
-**Parallel Flow Schema Structure**:
+**Advanced Workflow Schema Specification**:
 ```yaml
-name: parallel-build
+name: enterprise-release-pipeline
+description: Production release automation pipeline with parameterization and gates
+params:
+  env: staging
+  version: 1.0.0
+
+notify:
+  on_success: true   # Windows BalloonTip/Toast & macOS notifications
+  on_failure: true
+  webhook: "https://events.internal.corp/deployments"
+
 steps:
-  - name: prep
-    run: echo "Initializing..."
-  # Adjacent parallel steps execute concurrently:
-  - name: build-backend
-    run: sx j build
-    parallel: true
-  - name: test-suite
-    run: go test ./...
-    parallel: true
-  - name: summary
-    run: echo "All done!"
+  - name: lint-and-test
+    run: go test -short ./...
+    timeout: 30s
+    retries: 2
+    backoff: exponential
+
+  - name: compile
+    run: go build -o dist/app cmd/main.go
+    depends_on: [lint-and-test]
+    artifacts:
+      - "dist/*"
+
+  - name: gate
+    run: echo "Proceeding with deployment to {{params.env}}"
+    depends_on: [compile]
+    prompt: "Authorize release of v{{params.version}} to environment '{{params.env}}'?"
+
+  - name: deploy
+    run: echo "Deployed v{{params.version}} to {{params.env}}"
+    depends_on: [gate]
 ```
 
 ### 3. Java Toolchain & Multi-Version Manager

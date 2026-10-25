@@ -146,6 +146,10 @@ First-class Windows developer experience: dynamic tab completion across flows, s
 Interactive keyboard-driven tree browser for nested payloads with real-time fuzzy filtering (`/`), expand/collapse (`Enter`/`e`/`c`), and automated API health check assertions (`--assert-status`, `--assert-json`):
 ![Interactive JSON TUI](docs/images/30_shellix_json_tui.png)
 
+### 25. Workflow Execution Blueprint, Approval Gates & Artifact Preservation (`sx flow plan` & `sx flow artifacts`)
+Preview DAG execution waves, parameter overrides (`--set key=val`), and step dependencies without running side effects. Export Mermaid flowcharts (`--mermaid`), guard production deployments with interactive approval gates (`prompt:`), preserve build artifacts in `~/.shellix/artifacts/`, and receive native desktop alerts (`notify:`) on Windows BalloonTip/Toast and macOS:
+![Workflow Execution Plan](docs/images/31_shellix_flow_plan.png)
+
 ---
 
 ## 🚀 Key Features
@@ -154,8 +158,8 @@ Interactive keyboard-driven tree browser for nested payloads with real-time fuzz
    - **Fast Path (`go-git`)**: In-process status, branch tracking, and commit inspection running in **~1.5ms to 2.5ms** with zero fork or emulation delay.
    - **Full Path (Native Git)**: Seamless and transparent passthrough to the system Git binary for complex rebase, merge, and stash workflows.
 2. **Shellix Flows (Automation Engine)**:
-   - Declarative YAML workflows to automate builds, tests, deploys, and remote tasks.
-   - Support for sequential and parallel steps, conditional execution, timeouts, retries, and variable interpolation (`{{project_root}}`, `{{git.branch}}`, `{{env.VAR}}`).
+   - Declarative YAML workflows to automate builds, tests, releases, and local pipelines (pure local Go compiler, Java Maven/Gradle, Git, and test runners—zero Docker required).
+   - Support for sequential and parallel execution waves, dependency DAGs (`depends_on`), conditional step execution (`if:`), timeouts with exponential backoff, parameterization (`params` & `--set`), interactive approval gates (`prompt:`), artifact preservation (`artifacts:` & `sx flow artifacts`), dry-run execution blueprinting (`sx flow plan`), Mermaid architecture exports (`--mermaid`), and desktop/webhook notifications (`notify:`).
 3. **Multi-Repo Intelligent Search**:
    - High-throughput parallel file tree walking and regex/literal searching across dozens of registered repositories simultaneously.
 4. **Developer Productivity Shortcuts**:
