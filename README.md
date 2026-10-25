@@ -36,14 +36,26 @@ Sub-2ms Git inspection directly from disk:
 ![Instant Status](docs/images/01_shellix_status.png)
 
 ### 2. Flow Automation Engine
-Run declarative pipelines with progress tracking and variable interpolation:
+Run declarative pipelines with parallel step execution and audit logging:
 ![Flow Engine](docs/images/02_shellix_flow.png)
 
-### 3. Multi-Repo Parallel Search
+### 3. Parallel Java & Multi-Module Builds
+Run Java and Go builds concurrently in a single flow:
+![Parallel Builds](docs/images/07_shellix_parallel_builds.png)
+
+### 4. Java Toolchain & Environment Discovery
+Automated JDK discovery, wrapper detection, and single-file execution:
+![Java Toolchain](docs/images/06_shellix_java_env.png)
+
+### 5. Multi-Repo Parallel Search
 Search across multiple codebases with syntax-highlighted matching lines:
 ![Search Engine](docs/images/03_shellix_search.png)
 
-### 4. Developer Shortcuts
+### 6. SSH Multi-Server Target Management
+Manage server targets and execute commands in parallel across Linux nodes:
+![SSH Manager](docs/images/08_shellix_ssh_manager.png)
+
+### 7. Developer Shortcuts
 Manage directory bookmarks and reusable command snippets:
 ![Shortcuts](docs/images/04_shellix_shortcuts.png)
 
@@ -117,7 +129,9 @@ sx snip run test
 
 - [Architecture Overview](docs/architecture.md)
 - [Dual-Engine Git Specification](docs/git-engine.md)
-- [Shellix Flows Automation Guide](docs/flows.md)
+- [Shellix Flows Automation & Parallel Builds](docs/flows.md)
+- [Java Toolchain & Build Helper](docs/java.md)
+- [SSH Multi-Server Manager](docs/ssh.md)
 - [Multi-Repo Search Engine](docs/search.md)
 - [Developer Shortcuts (Bookmarks & Snippets)](docs/shortcuts.md)
 - [AI Agent Skill & Guidelines](skills/shellix/SKILL.md)

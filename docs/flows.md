@@ -45,7 +45,59 @@ steps:
 | `on_failure` | string | `abort` | Failure strategy: `abort` or `continue` |
 | `retries` | int | `0` | Number of times to retry upon non-zero exit |
 | `retry_delay` | string | `1s` | Delay between retry attempts (e.g. `2s`, `5s`) |
+| `parallel` | bool | `false` | When true, adjacent parallel steps run concurrently |
 | `env` | map | none | Key-value pairs injected into step environment |
+
+---
+
+## 3. Parallel Step Execution
+
+Adjacent steps marked with `parallel: true` are batched and executed concurrently using Go goroutines:
+
+```yaml
+name: parallel-ci-pipeline
+steps:
+  - name: prep-step
+    run: echo "Initializing environment..."
+
+  # The following two steps run concurrently in parallel:
+  - name: compile-backend-java
+    run: sx j build
+    parallel: true
+
+  - name: compile-frontend
+    run: npm run build
+    parallel: true
+
+  # Resumes sequential execution once all parallel tasks finish:
+  - name: run-integration-tests
+    run: go test ./...
+```
+
+---
+
+## 4. Comprehensive Audit Logging
+
+Every execution automatically generates a timestamped audit log in:
+```
+~/.shellix/logs/flows/<flow-name>-YYYYMMDD-HHMMSS.log
+```
+
+The log records:
+- Flow name, Run ID, host architecture, and execution timestamp
+- Per-step start time, duration, status, and complete raw stdout/stderr
+- Execution mode (Sequential vs Parallel worker)
+- Final overall outcome and elapsed time
+
+### Inspecting Logs via CLI
+
+```bash
+# List recent execution logs
+sx flow logs
+
+# View details of a specific log file
+sx flow logs <filename.log>
+```
 
 ---
 

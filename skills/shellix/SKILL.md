@@ -26,7 +26,7 @@ Use `sx` whenever you need to:
 | `sx g s` or `sx git status` | Sub-2ms repository status | Current branch, latest commit hash/author, staged, unstaged, untracked files |
 | `sx g <any-git-arg>` | Transparent native Git passthrough | Runs system Git directly with native speed |
 
-### 2. Automation Flows
+### 2. Automation Flows with Parallel Steps
 
 Shellix Flows are declarative YAML files that replace complex shell scripts.
 
@@ -37,24 +37,47 @@ sx flow validate path/to/flow.yaml
 # Execute a flow
 sx flow run path/to/flow.yaml
 
-# List user flows
-sx flow list
+# Inspect execution audit logs
+sx flow logs
+sx flow logs <filename.log>
 ```
 
-**Flow YAML Schema Structure**:
+**Parallel Flow Schema Structure**:
 ```yaml
-name: build-and-test
-description: Automated test and build verification
-env:
-  GO111MODULE: on
+name: parallel-build
 steps:
-  - name: test
-    run: go test -v ./...
-    timeout: 3m
-    on_failure: abort
-  - name: build
-    run: make build
-    timeout: 2m
+  - name: prep
+    run: echo "Initializing..."
+  # Adjacent parallel steps execute concurrently:
+  - name: build-backend
+    run: sx j build
+    parallel: true
+  - name: test-suite
+    run: go test ./...
+    parallel: true
+  - name: summary
+    run: echo "All done!"
+```
+
+### 3. Java Toolchain & Builds
+
+| Command | Purpose |
+|---|---|
+| `sx j env` or `sx java env` | Detects JDK version, compiler, JAVA_HOME, and build system |
+| `sx j build [args...]` | Automatically invokes Maven/Gradle or wrapper |
+| `sx j run <file.java>` | Executes a single Java source file directly |
+
+### 4. SSH Server Management & Multi-Exec
+
+```bash
+# Configure host profile
+sx ssh add prod-web --host 192.168.1.10 --user deploy
+
+# Execute a command in parallel across multiple Linux nodes
+sx ssh exec --hosts prod-web,prod-db "uptime && df -h"
+
+# Launch interactive remote session
+sx ssh connect prod-web
 ```
 
 ### 3. Multi-Repo Search

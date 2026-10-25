@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"shellix/internal/core"
 	"shellix/internal/flow"
 	"shellix/internal/git"
+	"shellix/internal/java"
 	"shellix/internal/search"
+	"shellix/internal/session"
 	"shellix/internal/shortcuts"
+	"shellix/internal/ssh"
 	"shellix/internal/terminal"
 
 	"github.com/spf13/cobra"
@@ -24,6 +28,8 @@ func main() {
 
 	gitEngine := git.NewEngine(cfg.Git.UseInProcessEngine)
 	shortcutMgr, _ := shortcuts.NewManager("")
+	sshMgr, _ := ssh.NewProfileManager("")
+	sessionMgr := session.NewManager()
 
 	rootCmd := &cobra.Command{
 		Use:   "shellix",
@@ -51,6 +57,8 @@ func main() {
 		Use:   "shell",
 		Short: "Launch interactive PTY shell",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			s := sessionMgr.RegisterSession("Local Shell", session.SessionLocal, cfg.Shell.Default)
+			defer func() { _ = sessionMgr.CloseSession(s.ID) }()
 			return terminal.RunShell(cfg.Shell.Default)
 		},
 	}
@@ -82,7 +90,7 @@ func main() {
 	// 5. Flow Automation commands
 	flowCmd := &cobra.Command{
 		Use:   "flow",
-		Short: "Automation workflow engine",
+		Short: "Automation workflow engine with parallel builds and audit logging",
 	}
 
 	flowRunCmd := &cobra.Command{
@@ -145,9 +153,206 @@ func main() {
 			return nil
 		},
 	}
-	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd)
 
-	// 6. Search command
+	flowLogsCmd := &cobra.Command{
+		Use:   "logs [filename]",
+		Short: "Inspect flow execution audit logs",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				dir, _ := flow.GetLogDir()
+				target := args[0]
+				if !filepath.IsAbs(target) {
+					target = filepath.Join(dir, target)
+				}
+				data, err := os.ReadFile(target)
+				if err != nil {
+					return err
+				}
+				fmt.Println(string(data))
+				return nil
+			}
+
+			logs, err := flow.ListLogs()
+			if err != nil {
+				return err
+			}
+			if len(logs) == 0 {
+				fmt.Println("No flow execution logs found yet.")
+				return nil
+			}
+			fmt.Printf("Execution Audit Logs (%d available in ~/.shellix/logs/flows):\n", len(logs))
+			max := len(logs)
+			if max > 10 {
+				max = 10
+			}
+			for i := 0; i < max; i++ {
+				fmt.Printf("  • %s\n", filepath.Base(logs[i]))
+			}
+			fmt.Println("\nView any log with: sx flow logs <filename>")
+			return nil
+		},
+	}
+
+	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd)
+
+	// 6. Java Toolchain commands
+	javaCmd := &cobra.Command{
+		Use:     "java",
+		Aliases: []string{"j"},
+		Short:   "Java toolchain, environment detection, and build helper",
+	}
+
+	javaEnvCmd := &cobra.Command{
+		Use:   "env",
+		Short: "Inspect active Java runtime, compiler, JAVA_HOME, and build tool",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return java.PrintEnv(".")
+		},
+	}
+
+	javaBuildCmd := &cobra.Command{
+		Use:                "build [args...]",
+		Short:              "Build project automatically using Maven or Gradle wrapper",
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return java.Build(".", args)
+		},
+	}
+
+	javaRunCmd := &cobra.Command{
+		Use:                "run <file.java> [args...]",
+		Short:              "Execute a single-file Java source file directly",
+		DisableFlagParsing: true,
+		Args:               cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return java.RunSource(args[0], args[1:])
+		},
+	}
+	javaCmd.AddCommand(javaEnvCmd, javaBuildCmd, javaRunCmd)
+
+	// 7. SSH commands
+	sshCmd := &cobra.Command{
+		Use:   "ssh",
+		Short: "Multi-server SSH connection manager and parallel command executor",
+	}
+
+	var sshHost, sshUser, sshKey, sshPass string
+	var sshPort int
+
+	sshAddCmd := &cobra.Command{
+		Use:   "add <alias>",
+		Short: "Save a remote Linux/Unix server target",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			p := ssh.HostProfile{
+				Name:     args[0],
+				Host:     sshHost,
+				Port:     sshPort,
+				User:     sshUser,
+				KeyPath:  sshKey,
+				Password: sshPass,
+			}
+			if err := sshMgr.AddHost(p); err != nil {
+				return err
+			}
+			fmt.Printf("✔ Saved SSH target '%s' (%s@%s:%d)\n", p.Name, p.User, p.Host, p.Port)
+			return nil
+		},
+	}
+	sshAddCmd.Flags().StringVar(&sshHost, "host", "", "Remote server hostname or IP")
+	sshAddCmd.Flags().StringVar(&sshUser, "user", "", "Remote SSH user")
+	sshAddCmd.Flags().IntVar(&sshPort, "port", 22, "SSH port")
+	sshAddCmd.Flags().StringVar(&sshKey, "key", "", "Path to private key (defaults to ~/.ssh/id_rsa or id_ed25519)")
+	sshAddCmd.Flags().StringVar(&sshPass, "pass", "", "Password (optional)")
+	_ = sshAddCmd.MarkFlagRequired("host")
+	_ = sshAddCmd.MarkFlagRequired("user")
+
+	sshListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List configured SSH server profiles",
+		Run: func(cmd *cobra.Command, args []string) {
+			hosts := sshMgr.ListHosts()
+			if len(hosts) == 0 {
+				fmt.Println("No SSH hosts configured. Use 'sx ssh add <name> --host <ip> --user <user>' to add one.")
+				return
+			}
+			fmt.Println("Configured SSH Server Targets:")
+			for _, h := range hosts {
+				fmt.Printf("  • %-16s %s@%s:%d\n", h.Name, h.User, h.Host, h.Port)
+			}
+		},
+	}
+
+	sshConnectCmd := &cobra.Command{
+		Use:   "connect <alias>",
+		Short: "Connect to a remote server with an interactive PTY session",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			hp, ok := sshMgr.GetHost(args[0])
+			if !ok {
+				return fmt.Errorf("host profile '%s' not found", args[0])
+			}
+			s := sessionMgr.RegisterSession(hp.Name, session.SessionSSH, hp.Host)
+			defer func() { _ = sessionMgr.CloseSession(s.ID) }()
+			return ssh.ConnectInteractive(hp)
+		},
+	}
+
+	var targetHostsStr string
+	sshExecCmd := &cobra.Command{
+		Use:   "exec \"<command>\"",
+		Short: "Execute a command concurrently across multiple Linux servers",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if targetHostsStr == "" {
+				return fmt.Errorf("please provide targets via --hosts <h1,h2,...>")
+			}
+			targets := strings.Split(targetHostsStr, ",")
+			var profiles []ssh.HostProfile
+			for _, t := range targets {
+				name := strings.TrimSpace(t)
+				hp, ok := sshMgr.GetHost(name)
+				if !ok {
+					return fmt.Errorf("configured host '%s' not found", name)
+				}
+				profiles = append(profiles, hp)
+			}
+
+			_ = ssh.MultiExec(profiles, args[0])
+			return nil
+		},
+	}
+	sshExecCmd.Flags().StringVar(&targetHostsStr, "hosts", "", "Comma-separated list of host aliases")
+	_ = sshExecCmd.MarkFlagRequired("hosts")
+
+	sshCmd.AddCommand(sshAddCmd, sshListCmd, sshConnectCmd, sshExecCmd)
+
+	// 8. Session / Tab manager commands
+	sessionCmd := &cobra.Command{
+		Use:     "session",
+		Aliases: []string{"tab"},
+		Short:   "Active terminal tabs and remote sessions monitor",
+	}
+
+	sessionListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List active sessions",
+		Run: func(cmd *cobra.Command, args []string) {
+			sessions := sessionMgr.ListSessions()
+			if len(sessions) == 0 {
+				fmt.Println("No background sessions currently active.")
+				return
+			}
+			fmt.Println("Active Shellix Sessions & Tabs:")
+			for _, s := range sessions {
+				fmt.Printf("  • [%s] %-15s (%s -> %s) started %s\n",
+					s.ID, s.Title, s.Type, s.Target, s.StartedAt.Format("15:04:05"))
+			}
+		},
+	}
+	sessionCmd.AddCommand(sessionListCmd)
+
+	// 9. Search command
 	var searchPaths []string
 	var searchRegex bool
 	var searchMax int
@@ -176,7 +381,7 @@ func main() {
 	searchCmd.Flags().BoolVarP(&searchRegex, "regex", "r", false, "Enable regular expression search")
 	searchCmd.Flags().IntVarP(&searchMax, "max", "m", 200, "Maximum results to display")
 
-	// 7. Bookmarks command
+	// 10. Bookmarks command
 	bmCmd := &cobra.Command{
 		Use:   "bm",
 		Short: "Filesystem bookmarks manager",
@@ -240,7 +445,7 @@ func main() {
 	}
 	bmCmd.AddCommand(bmAddCmd, bmListCmd, bmGetCmd, bmRmCmd)
 
-	// 8. Snippets command
+	// 11. Snippets command
 	snipCmd := &cobra.Command{
 		Use:   "snip",
 		Short: "Command snippets manager",
@@ -300,7 +505,7 @@ func main() {
 	}
 	snipCmd.AddCommand(snipAddCmd, snipListCmd, snipRunCmd, snipRmCmd)
 
-	rootCmd.AddCommand(versionCmd, shellCmd, statusCmd, gitCmd, flowCmd, searchCmd, bmCmd, snipCmd)
+	rootCmd.AddCommand(versionCmd, shellCmd, statusCmd, gitCmd, flowCmd, javaCmd, sshCmd, sessionCmd, searchCmd, bmCmd, snipCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

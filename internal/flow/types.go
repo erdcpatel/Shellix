@@ -24,6 +24,7 @@ type Step struct {
 	Retries     int               `yaml:"retries,omitempty"`
 	RetryDelay  string            `yaml:"retry_delay,omitempty"`
 	RetryDur    time.Duration     `yaml:"-"`
+	Parallel    bool              `yaml:"parallel,omitempty"`
 	Env         map[string]string `yaml:"env,omitempty"`
 }
 
@@ -37,9 +38,20 @@ type Flow struct {
 
 // ExecutionResult captures the output and status of a flow step
 type ExecutionResult struct {
-	StepName string
-	Duration time.Duration
-	Success  bool
-	Error    error
-	Output   string
+	StepName   string
+	Duration   time.Duration
+	Success    bool
+	Error      error
+	Output     string
+	IsParallel bool
+}
+
+// RunLogSummary holds high-level metadata for a persisted flow run
+type RunLogSummary struct {
+	RunID     string    `json:"run_id"`
+	FlowName  string    `json:"flow_name"`
+	StartTime time.Time `json:"start_time"`
+	Duration  string    `json:"duration"`
+	Success   bool      `json:"success"`
+	LogPath   string    `json:"log_path"`
 }

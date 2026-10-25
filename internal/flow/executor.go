@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -18,20 +19,24 @@ type Executor struct {
 	Flow    *Flow
 	Context *Context
 	Silent  bool
+	Logger  *FlowLogger
 }
 
 // NewExecutor creates a runner for a given flow and context
 func NewExecutor(f *Flow, ctx *Context) *Executor {
+	logger, _ := NewFlowLogger(f.Name)
 	return &Executor{
 		Flow:    f,
 		Context: ctx,
+		Logger:  logger,
 	}
 }
 
-// Execute runs all steps in the flow sequentially according to failure policies
+// Execute runs steps in the flow, handling parallel batches and sequential execution
 func (e *Executor) Execute() ([]ExecutionResult, error) {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
 	stepHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00BFFF"))
+	parallelHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF79C6"))
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500"))
 	errStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF4500"))
@@ -42,20 +47,88 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 		if e.Flow.Description != "" {
 			fmt.Printf("   %s\n", metaStyle.Render(e.Flow.Description))
 		}
-		fmt.Printf("   Steps: %d\n\n", len(e.Flow.Steps))
+		fmt.Printf("   Total Steps: %d\n\n", len(e.Flow.Steps))
 	}
 
 	flowStart := time.Now()
-	var results []ExecutionResult
+	var allResults []ExecutionResult
+	var flowErr error
 
-	for i, step := range e.Flow.Steps {
-		stepNum := fmt.Sprintf("[%d/%d]", i+1, len(e.Flow.Steps))
-		if !e.Silent {
-			fmt.Printf("%s %s ...\n", metaStyle.Render(stepNum), stepHeaderStyle.Render(step.Name))
+	i := 0
+	for i < len(e.Flow.Steps) {
+		current := e.Flow.Steps[i]
+
+		// 1. Check if this begins a batch of parallel steps
+		if current.Parallel {
+			batch := []Step{current}
+			j := i + 1
+			for j < len(e.Flow.Steps) && e.Flow.Steps[j].Parallel {
+				batch = append(batch, e.Flow.Steps[j])
+				j++
+			}
+
+			if !e.Silent {
+				fmt.Printf("%s Running %d parallel build steps concurrently...\n",
+					parallelHeaderStyle.Render("⚡ [PARALLEL BATCH]"), len(batch))
+				for _, s := range batch {
+					fmt.Printf("   • %s\n", stepHeaderStyle.Render(s.Name))
+				}
+				fmt.Println()
+			}
+
+			batchResults := e.executeParallelBatch(batch)
+			allResults = append(allResults, batchResults...)
+
+			// Process outcomes for the batch
+			var batchErr error
+			for idx, res := range batchResults {
+				st := batch[idx]
+				if e.Logger != nil {
+					e.Logger.LogStep(&st, res)
+				}
+
+				if res.Success {
+					if !e.Silent {
+						fmt.Printf("   %s %s in %s\n",
+							successStyle.Render("✔ [PARALLEL DONE]"), st.Name, metaStyle.Render(res.Duration.String()))
+					}
+				} else {
+					if !e.Silent {
+						fmt.Printf("   %s %s: %v (%s)\n",
+							errStyle.Render("✖ [PARALLEL FAIL]"), st.Name, res.Error, metaStyle.Render(res.Duration.String()))
+						if res.Output != "" {
+							fmt.Printf("   Output:\n%s\n", indent(res.Output, "     "))
+						}
+					}
+					if st.OnFailure != OnFailureContinue && batchErr == nil {
+						batchErr = fmt.Errorf("parallel step '%s' failed: %w", st.Name, res.Error)
+					}
+				}
+			}
+
+			if batchErr != nil {
+				flowErr = batchErr
+				break
+			}
+
+			if !e.Silent {
+				fmt.Println()
+			}
+			i = j
+			continue
 		}
 
-		res := e.executeStep(&step)
-		results = append(results, res)
+		// 2. Sequential step execution
+		stepNum := fmt.Sprintf("[%d/%d]", i+1, len(e.Flow.Steps))
+		if !e.Silent {
+			fmt.Printf("%s %s ...\n", metaStyle.Render(stepNum), stepHeaderStyle.Render(current.Name))
+		}
+
+		res := e.executeStep(&current, false)
+		allResults = append(allResults, res)
+		if e.Logger != nil {
+			e.Logger.LogStep(&current, res)
+		}
 
 		if res.Success {
 			if !e.Silent {
@@ -69,27 +142,60 @@ func (e *Executor) Execute() ([]ExecutionResult, error) {
 				}
 			}
 
-			if step.OnFailure == OnFailureContinue {
+			if current.OnFailure == OnFailureContinue {
 				if !e.Silent {
 					fmt.Println(warnStyle.Render("   ⚠ Step failed with 'continue' policy; proceeding..."))
 					fmt.Println()
 				}
+				i++
 				continue
 			}
 
-			return results, fmt.Errorf("flow aborted at step '%s': %w", step.Name, res.Error)
+			flowErr = fmt.Errorf("flow aborted at step '%s': %w", current.Name, res.Error)
+			break
 		}
+		i++
 	}
 
 	totalDuration := time.Since(flowStart)
-	if !e.Silent {
-		fmt.Println(successStyle.Render(fmt.Sprintf("✨ Flow '%s' finished successfully in %s", e.Flow.Name, totalDuration)))
+	success := flowErr == nil
+
+	var savedLogPath string
+	if e.Logger != nil {
+		savedLogPath = e.Logger.Close(success, totalDuration)
 	}
 
-	return results, nil
+	if !e.Silent {
+		if success {
+			fmt.Println(successStyle.Render(fmt.Sprintf("✨ Flow '%s' finished successfully in %s", e.Flow.Name, totalDuration)))
+		} else {
+			fmt.Println(errStyle.Render(fmt.Sprintf("🚨 Flow '%s' halted with error: %v", e.Flow.Name, flowErr)))
+		}
+		if savedLogPath != "" {
+			fmt.Printf("📄 Detailed audit log: %s\n", metaStyle.Render(savedLogPath))
+		}
+	}
+
+	return allResults, flowErr
 }
 
-func (e *Executor) executeStep(step *Step) ExecutionResult {
+func (e *Executor) executeParallelBatch(steps []Step) []ExecutionResult {
+	results := make([]ExecutionResult, len(steps))
+	var wg sync.WaitGroup
+
+	for idx := range steps {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i] = e.executeStep(&steps[i], true)
+		}(idx)
+	}
+
+	wg.Wait()
+	return results
+}
+
+func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 	start := time.Now()
 	var finalErr error
 	var finalOutput string
@@ -119,7 +225,6 @@ func (e *Executor) executeStep(step *Step) ExecutionResult {
 			cmd.Dir = workDir
 		}
 
-		// Environment setup
 		cmd.Env = os.Environ()
 		for k, v := range e.Flow.Env {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, e.Context.Interpolate(v)))
@@ -139,10 +244,11 @@ func (e *Executor) executeStep(step *Step) ExecutionResult {
 
 		if err == nil {
 			return ExecutionResult{
-				StepName: step.Name,
-				Duration: time.Since(start),
-				Success:  true,
-				Output:   finalOutput,
+				StepName:   step.Name,
+				Duration:   time.Since(start),
+				Success:    true,
+				Output:     finalOutput,
+				IsParallel: isParallel,
 			}
 		}
 
@@ -153,11 +259,12 @@ func (e *Executor) executeStep(step *Step) ExecutionResult {
 	}
 
 	return ExecutionResult{
-		StepName: step.Name,
-		Duration: time.Since(start),
-		Success:  false,
-		Error:    finalErr,
-		Output:   finalOutput,
+		StepName:   step.Name,
+		Duration:   time.Since(start),
+		Success:    false,
+		Error:      finalErr,
+		Output:     finalOutput,
+		IsParallel: isParallel,
 	}
 }
 
