@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"shellix/internal/git"
 
@@ -48,7 +49,31 @@ func NewBranchCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	branchCmd.AddCommand(branchListCmd)
+	branchCheckoutCmd := &cobra.Command{
+		Use:   "checkout <branch>",
+		Short: "Switch to specified branch",
+		Args:  cobra.ExactArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			branches, err := git.ListBranches(".")
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			var list []string
+			for _, b := range branches {
+				name := b.Name
+				if strings.HasPrefix(name, "origin/") {
+					name = strings.TrimPrefix(name, "origin/")
+				}
+				list = append(list, name)
+			}
+			return list, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return git.CheckoutBranch(".", args[0])
+		},
+	}
+
+	branchCmd.AddCommand(branchListCmd, branchCheckoutCmd)
 	return branchCmd
 }
 

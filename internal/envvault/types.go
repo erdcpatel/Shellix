@@ -6,10 +6,11 @@ import (
 
 // EnvVaultData contains the decrypted key-value environment variables
 type EnvVaultData struct {
-	Version   int               `json:"version"`
-	Project   string            `json:"project"`
-	Variables map[string]string `json:"variables"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	Version      int                          `json:"version"`
+	Project      string                       `json:"project"`
+	Variables    map[string]string            `json:"variables"`              // Default / Legacy fallback
+	Environments map[string]map[string]string `json:"environments,omitempty"` // Scoped environments (e.g. dev, staging, prod)
+	UpdatedAt    time.Time                    `json:"updated_at"`
 }
 
 // EnvVarSummary summarizes a variable for display
@@ -18,4 +19,5 @@ type EnvVarSummary struct {
 	Value    string `json:"value"`
 	Masked   string `json:"masked"`
 	IsSecret bool   `json:"is_secret"`
+	Env      string `json:"env,omitempty"`
 }

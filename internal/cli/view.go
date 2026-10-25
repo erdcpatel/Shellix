@@ -107,7 +107,27 @@ func NewJSONCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	jsonCmd.AddCommand(queryCmd, formatCmd, diffCmd)
+	tuiCmd := &cobra.Command{
+		Use:   "tui [file]",
+		Short: "Interactive collapsible tree explorer for JSON documents",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var r io.Reader = os.Stdin
+			label := "stdin"
+			if len(args) == 1 && args[0] != "-" {
+				f, err := os.Open(args[0])
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				r = f
+				label = args[0]
+			}
+			return jsonview.RunJSONTUI(r, label)
+		},
+	}
+
+	jsonCmd.AddCommand(queryCmd, formatCmd, diffCmd, tuiCmd)
 	return jsonCmd
 }
 

@@ -109,3 +109,9 @@ graph TD
 - Chunked reverse-seek algorithm for `--tail`, seeking 64KB blocks backwards from end of file to immediately display the last $N$ lines of multi-gigabyte log files without reading from start.
 - JSONPath query evaluator (`EvaluateJSONPath`) supporting dot notation, array indexing (`items[0]`), and slice wildcards (`users[*].id`).
 - Deep JSON schema structural diff engine (`CompareJSONFiles`) computing schema similarity percentage, added keys, removed keys, and value changes.
+- Interactive Bubble Tea collapsible tree explorer (`JSONTUIModel`) allowing keyboard-driven node unfolding, search filtering, and path inspection.
+
+### 3.15 Windows First-Class Priority Architecture & Background Services
+- **Native Windows Credential Manager (`wincred`)**: Direct Win32 API interop for hardware-backed master key storage without external daemon dependencies.
+- **Windows Task Scheduler Integration (`schtasks.exe`)**: First-class background scheduler service runner (`sx flow schedule daemon install`) that registers logon-triggered background executions without third-party service wrappers.
+- **PowerShell Prompt Hooks & Auto-Completion**: Dynamic completion scripts and location-aware environment injection hooks (`sx env hook powershell`) integrated into PowerShell `$PROFILE`.

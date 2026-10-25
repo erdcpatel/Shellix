@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"shellix/internal/httpclient"
+	"shellix/internal/jsonview"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -24,11 +25,16 @@ func NewHTTPCmd(app *AppContext) *cobra.Command {
 	var verbose bool
 	var outputFile string
 
+	// Assertions for automated API health checks
+	var assertStatus int
+	var assertJSON string
+	var assertMaxLatency string
+
 	httpCmd := &cobra.Command{
 		Use:     "http",
 		Aliases: []string{"api", "curl"},
 		Short:   "High-speed HTTP & API terminal client with response diffing",
-		Long:    "Modern developer API client with latency benchmarks, syntax highlighting, and endpoint comparison",
+		Long:    "Modern developer API client with latency benchmarks, syntax highlighting, assertions, and endpoint comparison",
 	}
 
 	httpCmd.PersistentFlags().StringArrayVarP(&headers, "header", "H", []string{}, "Custom request header (key:value)")
@@ -38,6 +44,10 @@ func NewHTTPCmd(app *AppContext) *cobra.Command {
 	httpCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "k", false, "Allow insecure TLS connections")
 	httpCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show headers and timing breakdown")
 	httpCmd.PersistentFlags().StringVarP(&outputFile, "output", "o", "", "Save response payload to file")
+
+	httpCmd.PersistentFlags().IntVar(&assertStatus, "assert-status", 0, "Assert expected HTTP status code (e.g. 200)")
+	httpCmd.PersistentFlags().StringVar(&assertJSON, "assert-json", "", "Assert JSONPath field value (e.g. '.status=healthy')")
+	httpCmd.PersistentFlags().StringVar(&assertMaxLatency, "assert-max-latency", "", "Assert response latency threshold (e.g. '300ms', '1s')")
 
 	makeMethodCmd := func(method string) *cobra.Command {
 		return &cobra.Command{
@@ -61,37 +71,40 @@ func NewHTTPCmd(app *AppContext) *cobra.Command {
 
 				resp, err := client.Execute(opts)
 				if err != nil {
-					return err
+					return fmt.Errorf("request failed: %w", err)
 				}
 
-				return printResponse(resp, verbose, outputFile)
+				if outputFile != "" {
+					if err := os.WriteFile(outputFile, resp.Body, 0644); err != nil {
+						return fmt.Errorf("failed saving output to %s: %w", outputFile, err)
+					}
+					fmt.Printf("✓ Response saved to %s (%d bytes)\n", outputFile, len(resp.Body))
+				}
+
+				printResponse(resp, verbose)
+
+				// Evaluate assertions if requested
+				if assertStatus > 0 || assertJSON != "" || assertMaxLatency != "" {
+					return evaluateAssertions(resp, assertStatus, assertJSON, assertMaxLatency)
+				}
+				return nil
 			},
 		}
 	}
 
-	// 1. Standard methods: sx http get, post, put, delete, patch
-	httpCmd.AddCommand(
-		makeMethodCmd("GET"),
-		makeMethodCmd("POST"),
-		makeMethodCmd("PUT"),
-		makeMethodCmd("DELETE"),
-		makeMethodCmd("PATCH"),
-	)
-
-	// 2. Generic request: sx http request <METHOD> <URL>
 	requestCmd := &cobra.Command{
-		Use:   "request <method> <url>",
+		Use:   "request <METHOD> <URL>",
 		Short: "Execute custom HTTP request",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			method := strings.ToUpper(args[0])
 			timeout, _ := time.ParseDuration(timeoutStr)
 			client := httpclient.NewClient(timeout, insecure)
 
-			hdrMap := parseHeaders(headers)
 			opts := httpclient.RequestOptions{
-				Method:      strings.ToUpper(args[0]),
+				Method:      method,
 				URL:         args[1],
-				Headers:     hdrMap,
+				Headers:     parseHeaders(headers),
 				Body:        []byte(data),
 				BearerToken: bearer,
 				Timeout:     timeout,
@@ -103,115 +116,192 @@ func NewHTTPCmd(app *AppContext) *cobra.Command {
 				return err
 			}
 
-			return printResponse(resp, verbose, outputFile)
+			if outputFile != "" {
+				_ = os.WriteFile(outputFile, resp.Body, 0644)
+			}
+
+			printResponse(resp, verbose)
+
+			if assertStatus > 0 || assertJSON != "" || assertMaxLatency != "" {
+				return evaluateAssertions(resp, assertStatus, assertJSON, assertMaxLatency)
+			}
+			return nil
 		},
 	}
-	httpCmd.AddCommand(requestCmd)
 
-	// 3. Diff endpoints: sx http diff <url1> <url2>
 	diffCmd := &cobra.Command{
 		Use:   "diff <url1> <url2>",
-		Short: "Compare responses and benchmark latency between two API endpoints",
+		Short: "Compare response structures and payloads of two HTTP endpoints",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			timeout, _ := time.ParseDuration(timeoutStr)
 			client := httpclient.NewClient(timeout, insecure)
 
-			hdrMap := parseHeaders(headers)
 			opts := httpclient.RequestOptions{
 				Method:      "GET",
-				Headers:     hdrMap,
-				Body:        []byte(data),
+				Headers:     parseHeaders(headers),
 				BearerToken: bearer,
 				Timeout:     timeout,
 				InsecureTLS: insecure,
 			}
 
-			fmt.Println("🚀 Comparing API endpoints...")
-			diffRes, err := client.CompareEndpoints(args[0], args[1], opts)
+			diff, err := client.CompareEndpoints(args[0], args[1], opts)
 			if err != nil {
 				return err
 			}
 
-			report := httpclient.RenderDiffReport(diffRes)
-			fmt.Print(report)
+			fmt.Print(httpclient.RenderDiffReport(diff))
 			return nil
 		},
 	}
-	httpCmd.AddCommand(diffCmd)
+
+	httpCmd.AddCommand(
+		makeMethodCmd("GET"),
+		makeMethodCmd("POST"),
+		makeMethodCmd("PUT"),
+		makeMethodCmd("DELETE"),
+		makeMethodCmd("PATCH"),
+		makeMethodCmd("HEAD"),
+		requestCmd,
+		diffCmd,
+	)
 
 	return httpCmd
 }
 
-func parseHeaders(raw []string) map[string]string {
-	m := make(map[string]string)
-	for _, h := range raw {
-		parts := strings.SplitN(h, ":", 2)
-		if len(parts) == 2 {
-			m[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+func evaluateAssertions(resp *httpclient.ResponseSummary, expectedStatus int, expectedJSON, maxLatency string) error {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
+	passStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
+	failStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF5555"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+
+	fmt.Println()
+	fmt.Println(titleStyle.Render("🧪 API Health Assertions:"))
+	fmt.Println(borderStyle.Render("─────────────────────────────────────────────────────────────"))
+
+	allPassed := true
+
+	// 1. Status assertion
+	if expectedStatus > 0 {
+		if resp.StatusCode == expectedStatus {
+			fmt.Printf("  %s Status Code: %d (expected %d)\n", passStyle.Render("✓"), resp.StatusCode, expectedStatus)
+		} else {
+			allPassed = false
+			fmt.Printf("  %s Status Code: %d (expected %d)\n", failStyle.Render("✗"), resp.StatusCode, expectedStatus)
 		}
 	}
-	return m
-}
 
-func printResponse(resp *httpclient.ResponseSummary, verbose bool, outputFile string) error {
-	statusStyle := lipgloss.NewStyle().Bold(true)
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		statusStyle = statusStyle.Foreground(lipgloss.Color("#04B575"))
-	} else if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-		statusStyle = statusStyle.Foreground(lipgloss.Color("#FFA500"))
-	} else {
-		statusStyle = statusStyle.Foreground(lipgloss.Color("#FF4500"))
+	// 2. Max latency assertion
+	if maxLatency != "" {
+		maxDur, err := time.ParseDuration(maxLatency)
+		if err != nil {
+			fmt.Printf("  %s Invalid --assert-max-latency duration: %v\n", failStyle.Render("✗"), err)
+			allPassed = false
+		} else {
+			if resp.Timing.TotalTime <= maxDur {
+				fmt.Printf("  %s Latency: %s <= %s\n", passStyle.Render("✓"), resp.Timing.TotalTime.Round(time.Millisecond), maxDur)
+			} else {
+				allPassed = false
+				fmt.Printf("  %s Latency Exceeded: %s > %s\n", failStyle.Render("✗"), resp.Timing.TotalTime.Round(time.Millisecond), maxDur)
+			}
+		}
 	}
 
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00BFFF"))
+	// 3. JSONPath assertion (.path=expectedVal)
+	if expectedJSON != "" {
+		parts := strings.SplitN(expectedJSON, "=", 2)
+		if len(parts) != 2 {
+			fmt.Printf("  %s Invalid --assert-json format: %q (expected .path=value)\n", failStyle.Render("✗"), expectedJSON)
+			allPassed = false
+		} else {
+			path := strings.TrimSpace(parts[0])
+			expectedVal := strings.TrimSpace(parts[1])
 
-	fmt.Printf("%s  •  %s  •  %s\n",
-		statusStyle.Render(fmt.Sprintf("%d %s", resp.StatusCode, resp.StatusText)),
-		dimStyle.Render(fmt.Sprintf("%d bytes", resp.ContentLength)),
-		metaStyle.Render(fmt.Sprintf("latency: %s", resp.Timing.TotalTime.Round(time.Millisecond))),
+			val, err := jsonview.QueryFromReader(bytes.NewReader(resp.Body), path)
+			if err != nil {
+				allPassed = false
+				fmt.Printf("  %s JSONPath %s error: %v\n", failStyle.Render("✗"), path, err)
+			} else {
+				formattedVal, _ := jsonview.FormatQueryResult(val, false)
+				cleanFormatted := strings.Trim(formattedVal, `"`)
+				cleanExpected := strings.Trim(expectedVal, `"`)
+
+				if cleanFormatted == cleanExpected {
+					fmt.Printf("  %s JSONPath: %s == %q\n", passStyle.Render("✓"), path, cleanFormatted)
+				} else {
+					allPassed = false
+					fmt.Printf("  %s JSONPath: %s == %q (expected %q)\n", failStyle.Render("✗"), path, cleanFormatted, cleanExpected)
+				}
+			}
+		}
+	}
+
+	fmt.Println(borderStyle.Render("─────────────────────────────────────────────────────────────"))
+	if !allPassed {
+		return fmt.Errorf("API assertions failed")
+	}
+	fmt.Println(dimStyle.Render("All health check assertions passed successfully."))
+	return nil
+}
+
+func parseHeaders(hdrs []string) map[string]string {
+	out := make(map[string]string)
+	for _, h := range hdrs {
+		parts := strings.SplitN(h, ":", 2)
+		if len(parts) == 2 {
+			out[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+	return out
+}
+
+func printResponse(r *httpclient.ResponseSummary, verbose bool) {
+	statusStyle := lipgloss.NewStyle().Bold(true)
+	if r.StatusCode >= 200 && r.StatusCode < 300 {
+		statusStyle = statusStyle.Foreground(lipgloss.Color("#04B575"))
+	} else if r.StatusCode >= 300 && r.StatusCode < 400 {
+		statusStyle = statusStyle.Foreground(lipgloss.Color("#00BFFF"))
+	} else {
+		statusStyle = statusStyle.Foreground(lipgloss.Color("#FF5555"))
+	}
+
+	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	hdrKeyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+
+	fmt.Printf("HTTP %s %s (%s)\n",
+		statusStyle.Render(fmt.Sprintf("%d %s", r.StatusCode, r.StatusText)),
+		metaStyle.Render(fmt.Sprintf("[%d bytes]", r.ContentLength)),
+		metaStyle.Render(fmt.Sprintf("in %s", r.Timing.TotalTime.Round(time.Millisecond))),
 	)
 
 	if verbose {
-		fmt.Println(dimStyle.Render("── Response Headers ─────────────────────────────────────────"))
-		for k, v := range resp.Headers {
-			fmt.Printf("  %s: %s\n", k, strings.Join(v, ", "))
+		fmt.Println(metaStyle.Render("─────────────────── Headers ───────────────────"))
+		for k, v := range r.Headers {
+			fmt.Printf("%s: %s\n", hdrKeyStyle.Render(k), strings.Join(v, ", "))
 		}
-		if resp.Timing.TTFB > 0 {
-			fmt.Println(dimStyle.Render("── Network Latency Breakdown ────────────────────────────────"))
-			if resp.Timing.DNSDuration > 0 {
-				fmt.Printf("  DNS Lookup:     %s\n", resp.Timing.DNSDuration.Round(100*time.Microsecond))
-			}
-			if resp.Timing.ConnDuration > 0 {
-				fmt.Printf("  TCP Connect:    %s\n", resp.Timing.ConnDuration.Round(100*time.Microsecond))
-			}
-			if resp.Timing.TLSDuration > 0 {
-				fmt.Printf("  TLS Handshake:  %s\n", resp.Timing.TLSDuration.Round(100*time.Microsecond))
-			}
-			fmt.Printf("  Time to First Byte (TTFB): %s\n", resp.Timing.TTFB.Round(100*time.Microsecond))
+
+		fmt.Println(metaStyle.Render("─────────────────── Timing Waterfall ───────────"))
+		fmt.Printf("  • DNS Lookup : %s\n", r.Timing.DNSDuration.Round(time.Microsecond))
+		fmt.Printf("  • TCP Connect: %s\n", r.Timing.ConnDuration.Round(time.Microsecond))
+		if r.Timing.TLSDuration > 0 {
+			fmt.Printf("  • TLS Handshake: %s\n", r.Timing.TLSDuration.Round(time.Microsecond))
 		}
-		fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────────"))
+		fmt.Printf("  • TTFB       : %s\n", r.Timing.TTFB.Round(time.Microsecond))
+		fmt.Printf("  • Total Time : %s\n", r.Timing.TotalTime.Round(time.Microsecond))
+		fmt.Println(metaStyle.Render("───────────────────────────────────────────────"))
 	}
 
-	// Output file handling
-	if outputFile != "" {
-		if err := os.WriteFile(outputFile, resp.Body, 0644); err != nil {
-			return fmt.Errorf("failed to save response body to %s: %w", outputFile, err)
+	if len(r.Body) > 0 {
+		if r.IsJSON {
+			var val interface{}
+			if err := json.Unmarshal(r.Body, &val); err == nil {
+				if pretty, err := json.MarshalIndent(val, "", "  "); err == nil {
+					fmt.Println(string(pretty))
+					return
+				}
+			}
 		}
-		fmt.Printf("✨ Payload saved to %s\n", outputFile)
-		return nil
+		fmt.Println(string(r.Body))
 	}
-
-	// Pretty-print JSON if applicable
-	if resp.IsJSON && len(resp.Body) > 0 {
-		var pretty bytes.Buffer
-		if err := json.Indent(&pretty, resp.Body, "", "  "); err == nil {
-			fmt.Println(pretty.String())
-			return nil
-		}
-	}
-
-	fmt.Println(string(resp.Body))
-	return nil
 }

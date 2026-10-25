@@ -127,23 +127,40 @@ steps:
 
 func outputShellIntegration(shellName string) error {
 	switch shellName {
-	case "zsh", "bash":
-		fmt.Println(`# Shellix shell integration
+	case "zsh":
+		fmt.Println(`# Shellix Zsh integration
 if command -v shellix >/dev/null 2>&1; then
     alias sx="shellix"
+fi
+if command -v sx >/dev/null 2>&1; then
+    source <(sx completion zsh 2>/dev/null)
+fi`)
+	case "bash":
+		fmt.Println(`# Shellix Bash integration
+if command -v shellix >/dev/null 2>&1; then
+    alias sx="shellix"
+fi
+if command -v sx >/dev/null 2>&1; then
+    source <(sx completion bash 2>/dev/null)
 fi`)
 	case "fish":
-		fmt.Println(`# Shellix fish integration
+		fmt.Println(`# Shellix Fish integration
 if type -q shellix
     alias sx=shellix
+end
+if type -q sx
+    sx completion fish | source
 end`)
 	case "powershell", "pwsh":
-		fmt.Println(`# Shellix PowerShell integration
+		fmt.Println(`# Shellix PowerShell integration (Windows First-Class)
 if (Get-Command shellix -ErrorAction SilentlyContinue) {
     Set-Alias -Name sx -Value shellix
+}
+if (Get-Command sx -ErrorAction SilentlyContinue) {
+    sx completion powershell | Out-String | Invoke-Expression
 }`)
 	default:
-		return fmt.Errorf("unsupported shell '%s'. Supported: zsh, bash, fish, powershell", shellName)
+		return fmt.Errorf("unsupported shell '%s'. Supported: powershell, zsh, bash, fish", shellName)
 	}
 	return nil
 }

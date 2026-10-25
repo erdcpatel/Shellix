@@ -229,6 +229,10 @@ sx http get https://api.github.com/zen
 sx http post https://httpbin.org/post -d '{"event":"deploy"}' -H "Content-Type: application/json"
 sx http get https://httpbin.org/bearer -b "my_secret_token"
 
+# Automated API Health Assertions (exits with 0 on success, 1 on failure for CI/CD)
+sx http get https://api.prod.corp/health --assert-status 200
+sx http get https://api.prod.corp/health --assert-json ".status=healthy" --assert-max-latency 500ms
+
 # Deep structural diff between two API endpoints (staging vs production)
 sx http diff https://api.staging.example.com/v1/health https://api.prod.example.com/v1/health
 ```
@@ -237,16 +241,20 @@ sx http diff https://api.staging.example.com/v1/health https://api.prod.example.
 
 ```bash
 # AES-256-GCM encrypted local environment store
-# Master key derived automatically from native OS Credential Vault
+# Master key derived automatically from native OS Credential Vault (WinCred / Keychain)
 sx env set API_KEY="sk_live_123" DATABASE_URL="postgres://user:pass@db:5432/app"
 
-# List masked variables (or unmask with --show)
-sx env list
-sx env list --show
+# Scoped Multi-Environment support (default, dev, staging, prod)
+sx env set --env staging STAGING_DB="postgres://staging:5432/app"
+sx env list --env staging
+sx env run --env staging -- ./deploy.sh
 
-# Inject secrets directly into child process without leaking to shell history
-sx env run -- ./deploy.sh
-sx env export
+# Rotate 256-bit AES master key in native OS Keyring & re-encrypt vault
+sx env rotate-key
+
+# direnv-style directory auto-load hook (Windows PowerShell & macOS Zsh)
+Invoke-Expression (& sx env hook powershell)  # PowerShell ($PROFILE)
+eval "$(sx env hook zsh)"                     # Zsh (~/.zshrc)
 ```
 
 ### 13. Flow Cron & Recurring Scheduler
@@ -262,11 +270,20 @@ sx flow schedule list
 # Run the background scheduler daemon
 sx flow schedule start
 sx flow schedule remove <job-id-or-flow>
+
+# Register scheduler as native background OS service (runs automatically on logon)
+sx flow schedule daemon install   # Windows Task Scheduler on Windows, LaunchAgent on macOS
+sx flow schedule daemon status
+sx flow schedule daemon uninstall
 ```
 
-### 14. Streaming Large File & JSON Query Engine
+### 14. Streaming Large File & JSON Explorer
 
 ```bash
+# Interactive collapsible JSON Tree Explorer (Bubble Tea TUI)
+sx json tui config.json
+curl -s https://api.example.com/cluster | sx json tui
+
 # High-throughput streaming log viewer (chunked reverse tail seek for gigabyte files)
 sx view /var/log/app.log -n 100 --tail
 sx view /var/log/app.log -f --search "ERROR"
@@ -278,6 +295,22 @@ curl -s https://api.example.com/status | sx json query ".status"
 # Deep structural schema comparison between two JSON documents
 sx json diff v1_schema.json v2_schema.json
 sx json format data.json
+```
+
+### 15. Dynamic Shell Auto-Completion
+
+```powershell
+# Windows PowerShell (First-Class Support):
+# Add to $PROFILE for persistent tab completion across flows, keys, branches & hosts:
+if (Get-Command sx -ErrorAction SilentlyContinue) {
+    sx completion powershell | Out-String | Invoke-Expression
+}
+```
+
+```bash
+# macOS Zsh:
+source <(sx completion zsh)
+```
 ```
 
 ---

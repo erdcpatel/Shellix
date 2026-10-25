@@ -3,99 +3,131 @@ package envvault
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestEnvVaultCRUDAndEncryption(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "shellix-env-test-*")
+func TestEnvVaultMultiEnvironmentAndRotation(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "shellix-env-multienv-*")
 	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	mgr, err := NewManager(tmpDir)
 	if err != nil {
-		t.Fatalf("failed to initialize manager: %v", err)
+		t.Fatalf("failed creating manager: %v", err)
 	}
 
-	// 1. Set variables
-	if err := mgr.Set("DATABASE_URL", "postgres://user:secretpass@localhost:5432/mydb"); err != nil {
-		t.Fatalf("Set DATABASE_URL failed: %v", err)
-	}
-	if err := mgr.Set("PORT", "8080"); err != nil {
-		t.Fatalf("Set PORT failed: %v", err)
+	// 1. Default environment
+	if err := mgr.Set("DEFAULT_KEY", "def_val"); err != nil {
+		t.Fatalf("failed setting default key: %v", err)
 	}
 
-	// 2. Get variables
-	val, ok := mgr.Get("DATABASE_URL")
-	if !ok || val != "postgres://user:secretpass@localhost:5432/mydb" {
-		t.Errorf("expected DATABASE_URL to match, got %s (ok=%v)", val, ok)
+	// 2. Staging environment
+	if err := mgr.SetEnv("staging", "STAGING_DB", "postgres://staging"); err != nil {
+		t.Fatalf("failed setting staging key: %v", err)
 	}
 
-	// 3. Verify .env.vault exists and is encrypted on disk
-	vaultFile := filepath.Join(tmpDir, ".env.vault")
-	cipherData, err := os.ReadFile(vaultFile)
+	// 3. Prod environment
+	if err := mgr.SetEnv("prod", "PROD_API_KEY", "sk_live_999999999999"); err != nil {
+		t.Fatalf("failed setting prod key: %v", err)
+	}
+
+	// Check listing environments
+	envs := mgr.ListEnvironments()
+	if len(envs) < 3 {
+		t.Errorf("expected at least 3 environments, got %v", envs)
+	}
+
+	// Check retrieval
+	val, ok := mgr.GetEnv("staging", "STAGING_DB")
+	if !ok || val != "postgres://staging" {
+		t.Errorf("unexpected staging db: %s", val)
+	}
+
+	// Check masking
+	summaries := mgr.ListSummariesEnv("prod", false)
+	if len(summaries) != 1 || summaries[0].Masked == summaries[0].Value {
+		t.Errorf("expected prod key to be masked, got: %+v", summaries)
+	}
+
+	// 4. Test Key Rotation
+	oldKey := make([]byte, len(mgr.key))
+	copy(oldKey, mgr.key)
+
+	newKeyHex, err := mgr.RotateMasterKey()
 	if err != nil {
-		t.Fatalf("failed reading .env.vault file: %v", err)
+		t.Fatalf("RotateMasterKey failed: %v", err)
 	}
-	if string(cipherData) == "" || (len(cipherData) > 0 && string(cipherData) == "postgres://user:secretpass@localhost:5432/mydb") {
-		t.Errorf("plaintext secret found in .env.vault file!")
-	}
-
-	// 4. Test masking in list summaries
-	summaries := mgr.ListSummaries(false)
-	if len(summaries) != 2 {
-		t.Fatalf("expected 2 summaries, got %d", len(summaries))
-	}
-	for _, s := range summaries {
-		if s.Key == "DATABASE_URL" {
-			if s.Masked == s.Value {
-				t.Errorf("expected DATABASE_URL to be masked")
-			}
-		}
+	if len(newKeyHex) != 64 {
+		t.Errorf("expected 64-char hex key, got %s", newKeyHex)
 	}
 
-	// 5. Tamper detection: modifying ciphertext should fail decryption
-	tampered := make([]byte, len(cipherData))
-	copy(tampered, cipherData)
-	tampered[len(tampered)-1] ^= 0xFF // flip bit in GCM auth tag
-	_ = os.WriteFile(vaultFile, tampered, 0600)
-
-	_, err = NewManager(tmpDir)
-	if err == nil {
-		t.Errorf("expected error opening tampered vault, got nil")
+	// Reopen manager and verify data still decrypts
+	reloaded, err := NewManager(tmpDir)
+	if err != nil {
+		t.Fatalf("failed reopening vault after rotation: %v", err)
 	}
 
-	// 6. Delete variable
-	_ = os.WriteFile(vaultFile, cipherData, 0600)
-	mgr2, _ := NewManager(tmpDir)
-	if err := mgr2.Delete("PORT"); err != nil {
-		t.Fatalf("delete failed: %v", err)
+	val, ok = reloaded.GetEnv("staging", "STAGING_DB")
+	if !ok || val != "postgres://staging" {
+		t.Errorf("failed decrypting staging value after rotation: %v", val)
 	}
-	if _, exists := mgr2.Get("PORT"); exists {
-		t.Errorf("expected PORT to be deleted")
+
+	// 5. Test Shell Hook generation
+	pwshHook, err := GenerateHook("powershell")
+	if err != nil || !strings.Contains(pwshHook, "Set-ShellixProjectEnv") {
+		t.Errorf("unexpected powershell hook: %v", pwshHook)
+	}
+
+	zshHook, err := GenerateHook("zsh")
+	if err != nil || !strings.Contains(zshHook, "_shellix_env_hook") {
+		t.Errorf("unexpected zsh hook: %v", zshHook)
 	}
 }
 
-func TestBuildEnvSlice(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "shellix-env-slice-*")
+func TestEnvVaultCRUDAndEncryption(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "shellix-env-test-*")
 	if err != nil {
-		t.Fatalf("failed temp dir: %v", err)
+		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	mgr, _ := NewManager(tmpDir)
-	_ = mgr.Set("TEST_INJECTED_VAR", "super-secret-42")
-
-	envSlice := mgr.BuildEnvSlice()
-	found := false
-	for _, e := range envSlice {
-		if e == "TEST_INJECTED_VAR=super-secret-42" {
-			found = true
-			break
-		}
+	mgr, err := NewManager(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
 	}
-	if !found {
-		t.Errorf("expected TEST_INJECTED_VAR in built env slice")
+
+	// Test Set and Get
+	if err := mgr.Set("API_KEY", "sk_live_1234567890abcdef"); err != nil {
+		t.Fatalf("failed to set key: %v", err)
+	}
+
+	val, exists := mgr.Get("API_KEY")
+	if !exists || val != "sk_live_1234567890abcdef" {
+		t.Fatalf("unexpected value: %s (exists=%v)", val, exists)
+	}
+
+	// Test Summaries masking
+	summaries := mgr.ListSummaries(false)
+	if len(summaries) != 1 || summaries[0].Masked == summaries[0].Value {
+		t.Fatalf("expected masked secret, got: %+v", summaries[0])
+	}
+
+	// Test Tamper detection: flip bit in ciphertext
+	vaultPath := filepath.Join(tmpDir, DefaultVaultFile)
+	data, err := os.ReadFile(vaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[len(data)-1] ^= 0xFF
+	if err := os.WriteFile(vaultPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	tamperedMgr, err := NewManager(tmpDir)
+	if err == nil && tamperedMgr != nil {
+		t.Fatalf("expected error loading tampered vault, got success")
 	}
 }

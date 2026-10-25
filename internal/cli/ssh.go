@@ -68,10 +68,22 @@ func NewSSHCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
+	hostComplete := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) != 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var names []string
+		for _, h := range app.SSHMgr.ListHosts() {
+			names = append(names, fmt.Sprintf("%s\t%s@%s", h.Name, h.User, h.Host))
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	}
+
 	sshConnectCmd := &cobra.Command{
-		Use:   "connect <alias>",
-		Short: "Connect to a remote server with an interactive PTY session",
-		Args:  cobra.ExactArgs(1),
+		Use:               "connect <alias>",
+		Short:             "Connect to a remote server with an interactive PTY session",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: hostComplete,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			hp, ok := app.SSHMgr.GetHost(args[0])
 			if !ok {
@@ -111,8 +123,9 @@ func NewSSHCmd(app *AppContext) *cobra.Command {
 	_ = sshExecCmd.MarkFlagRequired("hosts")
 
 	sshTunnelCmd := &cobra.Command{
-		Use:   "tunnel <alias> [localPort:]remoteHost:remotePort",
-		Short: "Forward a local port to a remote server target over SSH",
+		Use:               "tunnel <alias> [localPort:]remoteHost:remotePort",
+		Short:             "Forward a local port to a remote server target over SSH",
+		ValidArgsFunction: hostComplete,
 		Long: `Open an encrypted local port-forwarding tunnel to a remote Linux/Unix host.
 
 Examples:

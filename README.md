@@ -138,6 +138,14 @@ Standard 5-field cron automation scheduler with macros (`@hourly`, `@daily`, `@w
 High-throughput streaming viewer for multi-gigabyte logs (with chunked reverse tail seek) and JSONPath querying (`.data.items[0]`) with deep schema structural diffing:
 ![JSON Diff](docs/images/28_shellix_json_diff.png)
 
+### 23. Windows PowerShell Dynamic Auto-Completion & Auto-Hook (`sx completion` & `sx env hook`)
+First-class Windows developer experience: dynamic tab completion across flows, secret keys, git branches, and saved SSH hosts, paired with `direnv`-style auto-loading prompt hooks:
+![Windows PowerShell Integration](docs/images/29_shellix_powershell_completion.png)
+
+### 24. Interactive Collapsible JSON Tree Explorer (`sx json tui`) & API Assertions
+Interactive keyboard-driven tree browser for nested payloads with real-time fuzzy filtering (`/`), expand/collapse (`Enter`/`e`/`c`), and automated API health check assertions (`--assert-status`, `--assert-json`):
+![Interactive JSON TUI](docs/images/30_shellix_json_tui.png)
+
 ---
 
 ## 🚀 Key Features
@@ -201,24 +209,33 @@ sx bm list
 sx snip add test "go test -v ./..."
 sx snip run test
 
-# 7. HTTP & API Diffing
-sx http get https://api.github.com/zen
+# 7. HTTP & API Diffing and Automated Health Assertions
+sx http get https://api.github.com/zen --assert-status 200
+sx http get https://api.prod.corp/health --assert-json ".status=healthy" --assert-max-latency 500ms
 sx http diff https://api.staging.corp/health https://api.prod.corp/health
 
-# 8. Project Environment Vault & Secret Injection
-sx env set API_KEY=sk_live_9381 DATABASE_URL=postgres://...
-sx env list
-sx env run -- ./deploy.sh
+# 8. Project Environment Vault & Scoped Secret Injection
+sx env set --env staging API_KEY=sk_live_9381 DATABASE_URL=postgres://...
+sx env list --env staging
+sx env run --env staging -- ./deploy.sh
+sx env rotate-key                    # Rotate AES master key in native OS Keyring
+Invoke-Expression (& sx env hook powershell) # Auto-load on cd (Windows PowerShell)
 
-# 9. Flow Cron Scheduler
+# 9. Flow Cron Scheduler & Background OS Service
 sx flow schedule add build-and-test "*/15 * * * *"
 sx flow schedule list
-sx flow schedule start
+sx flow schedule daemon install      # Register Windows Task Scheduler / macOS LaunchAgent
+sx flow schedule daemon status
 
-# 10. Streaming File & JSON Viewer
+# 10. Streaming File & Interactive JSON Explorer
+sx json tui data.json                # Interactive keyboard tree explorer
 sx json query ".users[0].name" data.json
 sx json diff v1_service.json v2_service.json
 sx view large_service.log --tail -n 100
+
+# 11. Shell Auto-Completion (Windows & macOS)
+sx completion powershell | Out-String | Invoke-Expression  # Windows PowerShell
+source <(sx completion zsh)                               # macOS Zsh
 ```
 
 ---

@@ -31,9 +31,10 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	}
 
 	flowRunCmd := &cobra.Command{
-		Use:   "run <flow-name-or-path>",
-		Short: "Execute an automation flow",
-		Args:  cobra.ExactArgs(1),
+		Use:               "run <flow-name-or-path>",
+		Short:             "Execute an automation flow",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeFlowNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetPath := resolveFlowPath(args[0])
 			f, err := flow.ParseFile(targetPath)
@@ -93,9 +94,10 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 
 	var watchExts string
 	flowWatchCmd := &cobra.Command{
-		Use:   "watch <flow-name-or-path>",
-		Short: "Watch workspace for changes and automatically re-execute flow",
-		Args:  cobra.ExactArgs(1),
+		Use:               "watch <flow-name-or-path>",
+		Short:             "Watch workspace for changes and automatically re-execute flow",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeFlowNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetPath := resolveFlowPath(args[0])
 			f, err := flow.ParseFile(targetPath)
@@ -132,9 +134,10 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	flowWatchCmd.Flags().StringVar(&watchExts, "ext", "", "Comma-separated extensions to watch (e.g. go,yaml,java)")
 
 	flowTUICmd := &cobra.Command{
-		Use:   "tui <flow-name-or-path>",
-		Short: "Execute a flow with interactive full-screen Bubble Tea dashboard",
-		Args:  cobra.ExactArgs(1),
+		Use:               "tui <flow-name-or-path>",
+		Short:             "Execute a flow with interactive full-screen Bubble Tea dashboard",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeFlowNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetPath := resolveFlowPath(args[0])
 			f, err := flow.ParseFile(targetPath)
@@ -252,9 +255,10 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	flowRecordCmd.Flags().BoolVarP(&saveGlobal, "global", "g", false, "Save synthesized workflow to ~/.shellix/flows/ instead of workspace")
 
 	flowReplayCmd := &cobra.Command{
-		Use:   "replay <flow-name-or-path>",
-		Short: "Replay a workflow with interactive dashboard verification",
-		Args:  cobra.ExactArgs(1),
+		Use:               "replay <flow-name-or-path>",
+		Short:             "Replay a workflow with interactive dashboard verification",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeFlowNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetPath := resolveFlowPath(args[0])
 			f, err := flow.ParseFile(targetPath)
@@ -283,9 +287,10 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 
 	var scheduleCron string
 	schedAddCmd := &cobra.Command{
-		Use:   "add <flow-name-or-path> <cron-expr>",
-		Short: "Register a recurring cron schedule for an automation flow",
-		Args:  cobra.RangeArgs(1, 2),
+		Use:               "add <flow-name-or-path> <cron-expr>",
+		Short:             "Register a recurring cron schedule for an automation flow",
+		Args:              cobra.RangeArgs(1, 2),
+		ValidArgsFunction: completeFlowNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flowInput := args[0]
 			cronExpr := scheduleCron
@@ -339,6 +344,21 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 		Use:   "remove <id-or-flow-name>",
 		Short: "Remove a scheduled flow job",
 		Args:  cobra.ExactArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			store, err := flow.NewScheduleStore("")
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			jobs, err := store.Load()
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			var list []string
+			for _, j := range jobs {
+				list = append(list, fmt.Sprintf("%s\t%s (%s)", j.FlowName, j.ID, j.CronExpr))
+			}
+			return list, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := flow.NewScheduleStore("")
 			if err != nil {
@@ -405,7 +425,52 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	}
 	schedStartCmd.Flags().IntVarP(&pollSec, "interval", "i", 2, "Polling check interval in seconds")
 
-	flowScheduleCmd.AddCommand(schedAddCmd, schedListCmd, schedRemoveCmd, schedStartCmd)
+	daemonServiceCmd := &cobra.Command{
+		Use:   "daemon",
+		Short: "Manage native OS background service for flow scheduler (Windows Task Scheduler / macOS LaunchAgent)",
+	}
+
+	daemonInstallCmd := &cobra.Command{
+		Use:   "install",
+		Short: "Register scheduler as native background service (runs automatically on logon)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := flow.InstallDaemonService(""); err != nil {
+				return err
+			}
+			successStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
+			fmt.Printf("%s Flow scheduler registered as native background service.\n", successStyle.Render("✔"))
+			fmt.Println("Recurring flows will now execute automatically in the background.")
+			return nil
+		},
+	}
+
+	daemonUninstallCmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove scheduler background service",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := flow.UninstallDaemonService(); err != nil {
+				return err
+			}
+			fmt.Println("✓ Flow scheduler background service removed.")
+			return nil
+		},
+	}
+
+	daemonStatusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Query status of background scheduler service",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st, err := flow.DaemonServiceStatus()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Service Status: %s\n", st)
+			return nil
+		},
+	}
+
+	daemonServiceCmd.AddCommand(daemonInstallCmd, daemonUninstallCmd, daemonStatusCmd)
+	flowScheduleCmd.AddCommand(schedAddCmd, schedListCmd, schedRemoveCmd, schedStartCmd, daemonServiceCmd)
 
 	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd, flowRecordCmd, flowReplayCmd, flowScheduleCmd)
 	return flowCmd
@@ -558,4 +623,40 @@ func listAllFlows() {
 		fmt.Printf("\nRun any flow: %s\n", metaStyle.Render("sx flow run <flow-name>"))
 	}
 	fmt.Println()
+}
+
+func completeFlowNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return getAvailableFlowNames(), cobra.ShellCompDirectiveNoFileComp
+}
+
+func getAvailableFlowNames() []string {
+	var names []string
+	home, _ := os.UserHomeDir()
+	dirs := []string{
+		filepath.Join(".", ".shellix", "flows"),
+		filepath.Join(".", "tests", "fixtures", "flows"),
+		filepath.Join(home, ".shellix", "flows"),
+	}
+
+	seen := make(map[string]bool)
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			ext := filepath.Ext(e.Name())
+			if !e.IsDir() && (ext == ".yaml" || ext == ".yml") {
+				base := e.Name()[:len(e.Name())-len(ext)]
+				if !seen[base] {
+					seen[base] = true
+					names = append(names, base)
+				}
+			}
+		}
+	}
+	return names
 }

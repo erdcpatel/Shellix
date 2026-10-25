@@ -166,3 +166,44 @@ func TestStreamLargeFile(t *testing.T) {
 		t.Errorf("unexpected tail output: %s", tailOut)
 	}
 }
+
+func TestJSONTUIModel(t *testing.T) {
+	raw := []byte(`{
+		"server": "api-cluster",
+		"port": 9000,
+		"services": [
+			{"name": "auth", "active": true},
+			{"name": "billing", "active": false}
+		]
+	}`)
+
+	m, err := NewJSONTUIModel(raw, "test.json")
+	if err != nil {
+		t.Fatalf("failed creating JSON TUI model: %v", err)
+	}
+
+	if len(m.visibleRows) == 0 {
+		t.Fatalf("expected visible rows, got 0")
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "Shellix Interactive JSON Explorer") || !strings.Contains(view, "server") {
+		t.Errorf("unexpected initial view: %s", view)
+	}
+
+	// Test expand all
+	setAllExpanded(m.root, true)
+	m.rebuildVisibleRows()
+	expandedCount := len(m.visibleRows)
+
+	// Test collapse all
+	setAllExpanded(m.root, false)
+	m.root.Expanded = true
+	m.rebuildVisibleRows()
+	collapsedCount := len(m.visibleRows)
+
+	if collapsedCount >= expandedCount {
+		t.Errorf("expected collapsed count (%d) < expanded count (%d)", collapsedCount, expandedCount)
+	}
+}
+

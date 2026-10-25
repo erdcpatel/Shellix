@@ -24,6 +24,7 @@ type Step struct {
 	Retries     int               `yaml:"retries,omitempty"`
 	RetryDelay  string            `yaml:"retry_delay,omitempty"`
 	RetryDur    time.Duration     `yaml:"-"`
+	Backoff     string            `yaml:"backoff,omitempty"` // "linear" or "exponential"
 	Parallel    bool              `yaml:"parallel,omitempty"`
 	DependsOn   []string          `yaml:"depends_on,omitempty"`
 	If          string            `yaml:"if,omitempty"`

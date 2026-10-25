@@ -338,6 +338,9 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		cmd.Stderr = &buf
 
 		err := cmd.Run()
+		if ctx.Err() == context.DeadlineExceeded {
+			err = fmt.Errorf("step '%s' timed out after %s", step.Name, step.TimeoutDur)
+		}
 		cancel()
 
 		finalOutput = strings.TrimSpace(buf.String())
@@ -367,7 +370,12 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 
 		finalErr = err
 		if attempt < attempts && step.RetryDur > 0 {
-			time.Sleep(step.RetryDur)
+			sleepDur := step.RetryDur
+			if strings.EqualFold(step.Backoff, "exponential") {
+				multiplier := 1 << (attempt - 1)
+				sleepDur = step.RetryDur * time.Duration(multiplier)
+			}
+			time.Sleep(sleepDur)
 		}
 	}
 

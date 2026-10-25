@@ -292,6 +292,24 @@ func RunBranchSwitcher(dir string) error {
 	return nil
 }
 
+// CheckoutBranch checks out the specified branch
+func CheckoutBranch(dir, targetBranch string) error {
+	branch := targetBranch
+	if strings.HasPrefix(branch, "origin/") {
+		branch = strings.TrimPrefix(branch, "origin/")
+	}
+	cmd := exec.Command("git", "checkout", branch)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git checkout failed: %s", strings.TrimSpace(string(out)))
+	}
+	fmt.Printf("✨ Switched to branch '%s'\n", branch)
+	return nil
+}
+
 // RenderBranchSnapshot renders an ANSI snapshot for documentation and test verification
 func RenderBranchSnapshot(branches []BranchInfo, query string) string {
 	m := NewBranchSwitcherModel(branches)

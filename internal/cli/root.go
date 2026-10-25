@@ -60,6 +60,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewInitCmd(app),
 		NewJSONCmd(app),
 		NewViewCmd(app),
+		NewCompletionCmd(),
 	)
 
 	return rootCmd
