@@ -49,6 +49,13 @@ sx flow tui path/to/flow.yaml
 sx flow watch path/to/flow.yaml
 sx flow run path/to/flow.yaml --watch
 
+# Interactively record shell commands and synthesize a new flow YAML
+sx flow record my-pipeline
+sx flow record my-pipeline --global
+
+# Replay a recorded workflow with timing verification
+sx flow replay my-pipeline
+
 # Inspect execution audit logs
 sx flow logs
 sx flow logs <filename.log>

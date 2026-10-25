@@ -150,3 +150,35 @@ Shellix features a full-screen, split-pane Bubble Tea dashboard for workflow exe
 - **Interactive Navigation**: Navigate between steps with `↑`/`↓` or `j`/`k`, scroll logs with `pgup`/`pgdn`, quit with `q`/`esc`.
 
 ![Interactive Flow TUI](images/18_shellix_flow_tui.png)
+
+---
+
+## 5. Live Workflow Recording & YAML Synthesis (`sx flow record`)
+
+Never write workflow YAML from scratch again! Shellix lets you interactively execute shell commands live and automatically generates a clean, validated flow YAML with step names and buffered timeouts:
+
+```bash
+# Record commands interactively and save to .shellix/flows/my-build.yaml
+sx flow record my-build
+
+# Record and save to global user directory (~/.shellix/flows/)
+sx flow record my-build --global
+```
+
+![Live Workflow Recorder](images/24_shellix_flow_record.png)
+
+---
+
+## 6. Continuous File Watcher (`sx flow watch`)
+
+Re-execute your workflows automatically whenever code files are modified (pure Go, zero external dependencies):
+
+```bash
+# Watch current directory and re-execute pipeline
+sx flow watch verification-pipeline
+
+# Filter specific extensions
+sx flow watch verification-pipeline --ext go,yaml,java
+```
+
+![Flow File Watcher](images/22_shellix_flow_watch.png)

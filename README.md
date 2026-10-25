@@ -118,6 +118,10 @@ Continuous test-driven development loop that auto-runs pipelines upon file modif
 Fuzzy branch selector with ahead/behind status, commit summaries, and instant checkout:
 ![Branch Switcher](docs/images/23_shellix_git_branch.png)
 
+### 18. Live Workflow Recorder (`sx flow record`)
+Interactively record shell commands and automatically synthesize declarative YAML workflows:
+![Flow Recorder](docs/images/24_shellix_flow_record.png)
+
 ---
 
 ## 🚀 Key Features

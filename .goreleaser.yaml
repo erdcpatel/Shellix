@@ -1,0 +1,58 @@
+# GoReleaser configuration for Shellix
+version: 2
+
+project_name: shellix
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: shellix
+    main: ./cmd/shellix
+    binary: shellix
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X shellix/internal/core.Version={{.Version}}
+      - -X shellix/internal/core.Commit={{.Commit}}
+      - -X shellix/internal/core.Date={{.Date}}
+
+archives:
+  - id: default
+    builds:
+      - shellix
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - docs/*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "merge conflict"

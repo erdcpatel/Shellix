@@ -230,7 +230,50 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd)
+	var saveGlobal bool
+	flowRecordCmd := &cobra.Command{
+		Use:   "record [flow-name]",
+		Short: "Interactively record shell commands and synthesize a workflow YAML",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flowName := "recorded-workflow"
+			if len(args) > 0 {
+				flowName = args[0]
+			}
+			saveDir := filepath.Join(".", ".shellix", "flows")
+			if saveGlobal {
+				home, _ := os.UserHomeDir()
+				saveDir = filepath.Join(home, ".shellix", "flows")
+			}
+			_, err := flow.RunInteractiveRecorder(flowName, saveDir)
+			return err
+		},
+	}
+	flowRecordCmd.Flags().BoolVarP(&saveGlobal, "global", "g", false, "Save synthesized workflow to ~/.shellix/flows/ instead of workspace")
+
+	flowReplayCmd := &cobra.Command{
+		Use:   "replay <flow-name-or-path>",
+		Short: "Replay a workflow with interactive dashboard verification",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			targetPath := resolveFlowPath(args[0])
+			f, err := flow.ParseFile(targetPath)
+			if err != nil {
+				return err
+			}
+
+			cwd, _ := os.Getwd()
+			branch := "unknown"
+			if st, err := app.GitEngine.GetStatus(cwd); err == nil {
+				branch = st.Branch
+			}
+
+			ctx := flow.NewContext(cwd, branch)
+			return flow.RunFlowTUI(f, ctx)
+		},
+	}
+
+	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd, flowRecordCmd, flowReplayCmd)
 	return flowCmd
 }
 
