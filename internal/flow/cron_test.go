@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -157,7 +158,7 @@ func TestScheduleDaemon(t *testing.T) {
 	defer cancel()
 
 	executed := false
-	err = store.RunDaemon(ctx, 20*time.Millisecond, func(j ScheduledJob) error {
+	err = store.RunDaemon(ctx, 20*time.Millisecond, nil, func(j ScheduledJob) error {
 		if j.ID == job.ID {
 			executed = true
 		}
@@ -168,7 +169,45 @@ func TestScheduleDaemon(t *testing.T) {
 		t.Logf("daemon exited with: %v", err)
 	}
 
+	// Wait briefly for goroutine completion
+	time.Sleep(50 * time.Millisecond)
+
 	if !executed {
 		t.Errorf("expected due job to be triggered by daemon")
+	}
+}
+
+func TestProcessLiveness(t *testing.T) {
+	currentPID := os.Getpid()
+	if !IsProcessAlive(currentPID) {
+		t.Errorf("expected current PID %d to be alive", currentPID)
+	}
+
+	// Non-existent PID
+	fakePID := 9999999
+	if IsProcessAlive(fakePID) {
+		t.Errorf("expected fake PID %d to be dead", fakePID)
+	}
+}
+
+func TestSchedulerLogger(t *testing.T) {
+	logger, err := NewSchedulerLogger(false)
+	if err != nil {
+		t.Fatalf("failed creating logger: %v", err)
+	}
+	defer logger.Close()
+
+	logger.Info("test", "Testing scheduler logger message: %s", "hello")
+	logger.Success("test", "Success event")
+	logger.Warn("test", "Warning event")
+
+	logPath := GetSchedulerLogPath()
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed reading log: %v", err)
+	}
+
+	if !strings.Contains(string(content), "Testing scheduler logger message: hello") {
+		t.Errorf("log file does not contain expected message: %s", string(content))
 	}
 }

@@ -162,11 +162,16 @@ func NewEnvCmd(app *AppContext) *cobra.Command {
 					}
 				} else {
 					if isPowerShell {
-						// Escape PowerShell quotes and string expansion
-						escaped := strings.ReplaceAll(s.Value, "`", "``")
-						escaped = strings.ReplaceAll(escaped, `"`, "`\"")
-						escaped = strings.ReplaceAll(escaped, "$", "`$")
-						fmt.Printf("$env:%s = \"%s\"\n", s.Key, escaped)
+						if strings.Contains(s.Value, "\n") {
+							// Use verbatim here-string for multiline strings (e.g. RSA keys, PEM certs)
+							fmt.Printf("$env:%s = @'\n%s\n'@\n", s.Key, s.Value)
+						} else {
+							// Escape PowerShell quotes and string expansion
+							escaped := strings.ReplaceAll(s.Value, "`", "``")
+							escaped = strings.ReplaceAll(escaped, `"`, "`\"")
+							escaped = strings.ReplaceAll(escaped, "$", "`$")
+							fmt.Printf("$env:%s = \"%s\"\n", s.Key, escaped)
+						}
 					} else {
 						fmt.Printf("export %s=%q\n", s.Key, s.Value)
 					}

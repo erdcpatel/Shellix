@@ -193,7 +193,13 @@ func (m *Manager) save() error {
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, plainData, nil)
-	return os.WriteFile(m.vaultPath, ciphertext, 0600)
+
+	// Atomic write via temp file to guard against corruption on crash/power loss
+	tmpPath := fmt.Sprintf("%s.tmp.%d", m.vaultPath, time.Now().UnixNano())
+	if err := os.WriteFile(tmpPath, ciphertext, 0600); err != nil {
+		return fmt.Errorf("failed writing temporary vault file: %w", err)
+	}
+	return os.Rename(tmpPath, m.vaultPath)
 }
 
 func normalizeEnv(env string) string {
@@ -204,12 +210,30 @@ func normalizeEnv(env string) string {
 	return strings.ToLower(clean)
 }
 
+func isValidEnvKey(key string) bool {
+	if len(key) == 0 {
+		return false
+	}
+	for i, r := range key {
+		if i == 0 {
+			if !(r >= 'A' && r <= 'Z') && !(r >= 'a' && r <= 'z') && r != '_' {
+				return false
+			}
+		} else {
+			if !(r >= 'A' && r <= 'Z') && !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // Set stores an environment variable in the specified environment
 func (m *Manager) SetEnv(env, key, val string) error {
 	targetEnv := normalizeEnv(env)
 	key = strings.TrimSpace(key)
-	if key == "" {
-		return fmt.Errorf("variable key cannot be empty")
+	if !isValidEnvKey(key) {
+		return fmt.Errorf("invalid variable name %q: must start with letter or underscore and contain only alphanumeric characters and underscores", key)
 	}
 
 	if m.data.Environments[targetEnv] == nil {

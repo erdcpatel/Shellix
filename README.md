@@ -224,6 +224,7 @@ Invoke-Expression (& sx env hook powershell) # Auto-load on cd (Windows PowerShe
 # 9. Flow Cron Scheduler & Background OS Service
 sx flow schedule add build-and-test "*/15 * * * *"
 sx flow schedule list
+sx flow schedule logs -f             # Stream live background runner logs
 sx flow schedule daemon install      # Register Windows Task Scheduler / macOS LaunchAgent
 sx flow schedule daemon status
 
@@ -236,6 +237,9 @@ sx view large_service.log --tail -n 100
 # 11. Shell Auto-Completion (Windows & macOS)
 sx completion powershell | Out-String | Invoke-Expression  # Windows PowerShell
 source <(sx completion zsh)                               # macOS Zsh
+
+# 12. Background Process & Service Monitor
+sx ps                                # Inspect active daemons, PIDs, uptimes & heartbeat
 ```
 
 ---

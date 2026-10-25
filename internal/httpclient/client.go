@@ -85,7 +85,9 @@ func (c *Client) Execute(opts RequestOptions) (*ResponseSummary, error) {
 
 	metrics.TotalTime = time.Since(reqStart)
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	const maxBodyBytes = 50 * 1024 * 1024 // 50MB limit to prevent OOM
+	limitReader := io.LimitReader(resp.Body, maxBodyBytes)
+	bodyBytes, err := io.ReadAll(limitReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}

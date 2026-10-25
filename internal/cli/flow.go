@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"shellix/internal/flow"
+	"shellix/internal/jsonview"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -384,6 +385,20 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 		Use:   "start",
 		Short: "Run the recurring flow scheduler daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 1. Acquire single-instance PID daemon lock
+			daemonInfo, err := flow.AcquireDaemonLock()
+			if err != nil {
+				return err
+			}
+			defer flow.ReleaseDaemonLock()
+
+			// 2. Open persistent scheduler logger
+			logger, err := flow.NewSchedulerLogger(true)
+			if err != nil {
+				return err
+			}
+			defer logger.Close()
+
 			store, err := flow.NewScheduleStore("")
 			if err != nil {
 				return err
@@ -391,18 +406,20 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 
 			titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
 			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+			keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00BFFF"))
 			fmt.Println(titleStyle.Render("⏰ Shellix Flow Scheduler Daemon Active"))
+			fmt.Printf("  • PID      : %s\n", keyStyle.Render(fmt.Sprintf("%d", daemonInfo.PID)))
+			fmt.Printf("  • Host     : %s\n", dimStyle.Render(daemonInfo.Hostname))
+			fmt.Printf("  • Log File : %s\n", dimStyle.Render(flow.GetSchedulerLogPath()))
 			fmt.Println(dimStyle.Render(fmt.Sprintf("Checking pending jobs every %d seconds. Press Ctrl+C to terminate.", pollSec)))
 
 			sigCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
 
-			return store.RunDaemon(sigCtx, time.Duration(pollSec)*time.Second, func(job flow.ScheduledJob) error {
-				fmt.Printf("[%s] 🚀 Triggering recurring flow: %s (%s)\n", time.Now().Format("15:04:05"), job.FlowName, job.CronExpr)
+			return store.RunDaemon(sigCtx, time.Duration(pollSec)*time.Second, logger, func(job flow.ScheduledJob) error {
 				targetPath := resolveFlowPath(job.FlowPath)
 				f, err := flow.ParseFile(targetPath)
 				if err != nil {
-					fmt.Printf("   ❌ Flow parse error: %v\n", err)
 					return err
 				}
 
@@ -413,17 +430,47 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 				}
 				ctx := flow.NewContext(cwd, branch)
 				executor := flow.NewExecutor(f, ctx)
-				results, err := executor.Execute()
-				if err != nil {
-					fmt.Printf("   ❌ Flow execution failed: %v\n", err)
-					return err
-				}
-				fmt.Printf("   ✓ Flow executed successfully (%d steps)\n", len(results))
-				return nil
+				_, runErr := executor.Execute()
+				return runErr
 			})
 		},
 	}
 	schedStartCmd.Flags().IntVarP(&pollSec, "interval", "i", 2, "Polling check interval in seconds")
+
+	var logLines int
+	var logFollow bool
+	schedLogsCmd := &cobra.Command{
+		Use:   "logs",
+		Short: "View or stream background scheduler daemon logs",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			logPath := flow.GetSchedulerLogPath()
+			if _, err := os.Stat(logPath); os.IsNotExist(err) {
+				fmt.Println("No scheduler daemon logs found yet. Start the daemon with: sx flow schedule start")
+				return nil
+			}
+
+			cfg := jsonview.ViewerConfig{
+				FilePath:        logPath,
+				MaxLines:        logLines,
+				Tail:            true,
+				Follow:          logFollow,
+				ShowLineNumbers: false,
+			}
+
+			sigCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+
+			titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+			dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+			fmt.Println(titleStyle.Render("📜 Shellix Flow Scheduler Log Stream:"))
+			fmt.Println(dimStyle.Render(fmt.Sprintf("Path: %s | Lines: %d", logPath, logLines)))
+			fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────────────"))
+
+			return jsonview.StreamLargeFile(sigCtx, os.Stdout, cfg)
+		},
+	}
+	schedLogsCmd.Flags().IntVarP(&logLines, "lines", "n", 50, "Number of log lines to view")
+	schedLogsCmd.Flags().BoolVarP(&logFollow, "follow", "f", false, "Continuously stream live incoming logs")
 
 	daemonServiceCmd := &cobra.Command{
 		Use:   "daemon",
@@ -470,7 +517,7 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 	}
 
 	daemonServiceCmd.AddCommand(daemonInstallCmd, daemonUninstallCmd, daemonStatusCmd)
-	flowScheduleCmd.AddCommand(schedAddCmd, schedListCmd, schedRemoveCmd, schedStartCmd, daemonServiceCmd)
+	flowScheduleCmd.AddCommand(schedAddCmd, schedListCmd, schedRemoveCmd, schedStartCmd, schedLogsCmd, daemonServiceCmd)
 
 	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd, flowRecordCmd, flowReplayCmd, flowScheduleCmd)
 	return flowCmd
@@ -493,8 +540,25 @@ func listScheduledFlows() error {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
 	redStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#E0AF68"))
 
-	fmt.Println(titleStyle.Render("⏰ Shellix Recurring Flow Schedules"))
+	daemonInfo, isRunning, _ := flow.GetDaemonStatus()
+
+	fmt.Println(titleStyle.Render("⏰ Shellix Recurring Flow Schedules & Background Daemon"))
+	fmt.Println(borderStyle.Render("──────────────────────────────────────────────────────────────────────────────────────────"))
+
+	if isRunning && daemonInfo != nil {
+		uptime := time.Since(daemonInfo.StartedAt).Round(time.Second)
+		heartbeatAgo := time.Since(daemonInfo.LastHeartbeat).Round(time.Second)
+		fmt.Printf("  • Daemon State   : %s (PID: %d on %s)\n",
+			greenStyle.Render("● ACTIVE"), daemonInfo.PID, daemonInfo.Hostname)
+		fmt.Printf("  • Uptime / Heart : %s / %s ago\n",
+			dimStyle.Render(uptime.String()), greenStyle.Render(heartbeatAgo.String()))
+	} else {
+		fmt.Printf("  • Daemon State   : %s\n",
+			dimStyle.Render("○ STOPPED (start with 'sx flow schedule start' or 'sx flow schedule daemon install')"))
+	}
+	fmt.Printf("  • Daemon Log     : %s\n", dimStyle.Render(flow.GetSchedulerLogPath()))
 	fmt.Println(borderStyle.Render("──────────────────────────────────────────────────────────────────────────────────────────"))
 
 	if len(jobs) == 0 {
@@ -517,7 +581,9 @@ func listScheduledFlows() error {
 
 	for _, j := range jobs {
 		status := greenStyle.Render("ENABLED")
-		if !j.Enabled {
+		if j.InFlight {
+			status = yellowStyle.Render("IN-FLIGHT")
+		} else if !j.Enabled {
 			status = dimStyle.Render("PAUSED")
 		} else if j.LastStatus == "FAILED" {
 			status = redStyle.Render("ERR_LAST")
@@ -545,7 +611,10 @@ func listScheduledFlows() error {
 	}
 
 	fmt.Println(borderStyle.Render("──────────────────────────────────────────────────────────────────────────────────────────"))
-	fmt.Printf("%s\n\n", dimStyle.Render("Start daemon runner: sx flow schedule start"))
+	fmt.Printf("%s  •  %s\n\n",
+		dimStyle.Render("View live logs: sx flow schedule logs -f"),
+		dimStyle.Render("Start runner: sx flow schedule start"),
+	)
 	return nil
 }
 

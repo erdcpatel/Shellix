@@ -20,6 +20,8 @@ type ScheduledJob struct {
 	FlowPath   string    `json:"flow_path,omitempty"`
 	CronExpr   string    `json:"cron_expr"`
 	Enabled    bool      `json:"enabled"`
+	InFlight   bool      `json:"in_flight"`
+	StartedAt  time.Time `json:"started_at,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	LastRun    time.Time `json:"last_run,omitempty"`
 	NextRun    time.Time `json:"next_run"`
@@ -79,7 +81,7 @@ func (s *ScheduleStore) Load() ([]ScheduledJob, error) {
 	return jobs, nil
 }
 
-// Save persists scheduled jobs to disk with 0600 permissions
+// Save persists scheduled jobs to disk atomically with 0600 permissions
 func (s *ScheduleStore) Save(jobs []ScheduledJob) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -89,7 +91,13 @@ func (s *ScheduleStore) Save(jobs []ScheduledJob) error {
 		return fmt.Errorf("failed to serialize schedules: %w", err)
 	}
 
-	return os.WriteFile(s.filePath, data, 0600)
+	// Atomic write via temp file
+	tmpPath := fmt.Sprintf("%s.tmp.%d", s.filePath, time.Now().UnixNano())
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return fmt.Errorf("failed writing temporary schedules file: %w", err)
+	}
+
+	return os.Rename(tmpPath, s.filePath)
 }
 
 // Add creates and persists a new scheduled flow
@@ -124,6 +132,7 @@ func (s *ScheduleStore) Add(flowName, flowPath, cronExpr string) (*ScheduledJob,
 		FlowPath:  flowPath,
 		CronExpr:  cronExpr,
 		Enabled:   true,
+		InFlight:  false,
 		CreatedAt: now,
 		NextRun:   next,
 		RunCount:  0,
@@ -194,7 +203,27 @@ func (s *ScheduleStore) Toggle(idOrName string, enable bool) (*ScheduledJob, err
 	return target, nil
 }
 
-// UpdateResult records execution outcome and calculates next run time
+// MarkInFlight updates the execution status to guard against overlapping runs
+func (s *ScheduleStore) MarkInFlight(id string, inFlight bool) error {
+	jobs, err := s.Load()
+	if err != nil {
+		return err
+	}
+
+	for i := range jobs {
+		if jobs[i].ID == id {
+			jobs[i].InFlight = inFlight
+			if inFlight {
+				jobs[i].StartedAt = time.Now()
+			}
+			break
+		}
+	}
+
+	return s.Save(jobs)
+}
+
+// UpdateResult records execution outcome, clears in-flight flag, and calculates next run time
 func (s *ScheduleStore) UpdateResult(id string, success bool, errMsg string) error {
 	jobs, err := s.Load()
 	if err != nil {
@@ -203,6 +232,7 @@ func (s *ScheduleStore) UpdateResult(id string, success bool, errMsg string) err
 
 	for i := range jobs {
 		if jobs[i].ID == id {
+			jobs[i].InFlight = false
 			jobs[i].LastRun = time.Now()
 			jobs[i].RunCount++
 			if success {
@@ -223,8 +253,8 @@ func (s *ScheduleStore) UpdateResult(id string, success bool, errMsg string) err
 	return s.Save(jobs)
 }
 
-// RunDaemon starts the scheduler loop, triggering due jobs
-func (s *ScheduleStore) RunDaemon(ctx context.Context, pollInterval time.Duration, runFn func(job ScheduledJob) error) error {
+// RunDaemon starts the scheduler loop with overlapping guards and logger
+func (s *ScheduleStore) RunDaemon(ctx context.Context, pollInterval time.Duration, logger *SchedulerLogger, runFn func(job ScheduledJob) error) error {
 	if pollInterval <= 0 {
 		pollInterval = 2 * time.Second
 	}
@@ -232,14 +262,31 @@ func (s *ScheduleStore) RunDaemon(ctx context.Context, pollInterval time.Duratio
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	heartbeatTicker := time.NewTicker(5 * time.Second)
+	defer heartbeatTicker.Stop()
+
+	if logger != nil {
+		logger.Info("scheduler", "Daemon event loop active (poll interval: %s)", pollInterval)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
+			if logger != nil {
+				logger.Info("scheduler", "Scheduler daemon shutting down (context cancelled)")
+			}
 			return ctx.Err()
+
+		case <-heartbeatTicker.C:
+			UpdateHeartbeat()
+
 		case <-ticker.C:
 			now := time.Now()
 			jobs, err := s.Load()
 			if err != nil {
+				if logger != nil {
+					logger.Error("scheduler", "Failed loading schedules: %v", err)
+				}
 				continue
 			}
 
@@ -249,12 +296,39 @@ func (s *ScheduleStore) RunDaemon(ctx context.Context, pollInterval time.Duratio
 				}
 
 				if now.After(job.NextRun) || now.Equal(job.NextRun) {
-					runErr := runFn(job)
-					errMsg := ""
-					if runErr != nil {
-						errMsg = runErr.Error()
+					// 1. Guard against overlapping executions
+					if job.InFlight {
+						if logger != nil {
+							logger.Warn(job.ID, "Flow '%s' is still in-flight (started %s ago). Skipping overlapping execution.",
+								job.FlowName, time.Since(job.StartedAt).Round(time.Second))
+						}
+						continue
 					}
-					_ = s.UpdateResult(job.ID, runErr == nil, errMsg)
+
+					// 2. Mark in-flight
+					_ = s.MarkInFlight(job.ID, true)
+					if logger != nil {
+						logger.Info(job.ID, "Triggering flow '%s' (cron: %s)", job.FlowName, job.CronExpr)
+					}
+
+					go func(targetJob ScheduledJob) {
+						start := time.Now()
+						runErr := runFn(targetJob)
+						dur := time.Since(start)
+
+						errMsg := ""
+						if runErr != nil {
+							errMsg = runErr.Error()
+							if logger != nil {
+								logger.Error(targetJob.ID, "Flow '%s' failed in %s: %v", targetJob.FlowName, dur.Round(time.Millisecond), runErr)
+							}
+						} else {
+							if logger != nil {
+								logger.Success(targetJob.ID, "Flow '%s' finished successfully in %s", targetJob.FlowName, dur.Round(time.Millisecond))
+							}
+						}
+						_ = s.UpdateResult(targetJob.ID, runErr == nil, errMsg)
+					}(job)
 				}
 			}
 		}

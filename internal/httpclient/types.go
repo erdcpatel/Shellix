@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -88,6 +89,12 @@ func NewClient(timeout time.Duration, insecureTLS bool) *Client {
 		httpClient: &http.Client{
 			Transport: tr,
 			Timeout:   timeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("stopped after 10 redirects to prevent redirect loop")
+				}
+				return nil
+			},
 		},
 	}
 }

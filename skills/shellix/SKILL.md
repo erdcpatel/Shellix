@@ -269,12 +269,20 @@ sx flow schedule list
 
 # Run the background scheduler daemon
 sx flow schedule start
+sx flow schedule logs -f          # Stream live daemon logs
 sx flow schedule remove <job-id-or-flow>
 
 # Register scheduler as native background OS service (runs automatically on logon)
 sx flow schedule daemon install   # Windows Task Scheduler on Windows, LaunchAgent on macOS
 sx flow schedule daemon status
 sx flow schedule daemon uninstall
+```
+
+### 14. Background Process & Service Monitor (`sx ps`)
+
+```bash
+# Monitor active Shellix daemons, PIDs, uptimes, heartbeats, and OS service hooks
+sx ps
 ```
 
 ### 14. Streaming Large File & JSON Explorer
