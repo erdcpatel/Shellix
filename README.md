@@ -63,14 +63,17 @@ Search across multiple codebases with syntax-highlighted matching lines:
 Manage server targets and execute commands in parallel across Linux nodes:
 ![SSH Manager](docs/images/08_shellix_ssh_manager.png)
 
-# 7. GitHub Integration (HTTPS + PAT)
-Manage PRs and monitor CI runs directly from your terminal:
+### 7. GitHub Integration (HTTPS + PAT)
+Manage PRs, Issues, and CI runs directly from your terminal:
 ```bash
 sx github auth            # Save PAT into Windows Credential Manager / Keychain
 sx github whoami          # Verify authenticated profile
 sx pr list                # List open pull requests
 sx pr view 42             # View PR details
 sx pr create --title "..." # Open new pull request
+sx issue list             # List open issues
+sx issue view 10          # View issue details
+sx issue create --title "..." # Create new issue
 sx ci                     # Check CI workflow runs for current branch
 ```
 
@@ -78,7 +81,15 @@ sx ci                     # Check CI workflow runs for current branch
 Run deep environment health checks on Git, JDKs, Keyring, and SSH hardening:
 ![System Doctor](docs/images/12_shellix_doctor.png)
 
-### 9. Developer Shortcuts
+### 9. SSH Port Forwarding Tunneling
+Encrypted local port forwarding over SSH without third-party tools:
+![SSH Tunnel](docs/images/16_shellix_ssh_tunnel.png)
+
+### 10. Rapid Developer Onboarding (`sx init`)
+Initialize ~/.shellix storage, secure permissions, and instant shell aliases:
+![Shellix Init](docs/images/15_shellix_init.png)
+
+### 11. Developer Shortcuts
 Manage directory bookmarks and reusable command snippets:
 ![Shortcuts](docs/images/04_shellix_shortcuts.png)
 

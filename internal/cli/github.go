@@ -242,3 +242,126 @@ func NewCICmd(app *AppContext) *cobra.Command {
 
 	return ciCmd
 }
+
+// NewIssueCmd handles GitHub issues management
+func NewIssueCmd(app *AppContext) *cobra.Command {
+	var issueState string
+	var issueLimit int
+
+	issueCmd := &cobra.Command{
+		Use:     "issue",
+		Aliases: []string{"issues"},
+		Short:   "GitHub Issues management via HTTPS + PAT",
+	}
+
+	// 1. sx issue list
+	issueListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List repository issues",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			slug, err := github.DetectRepoSlug(".")
+			if err != nil {
+				return err
+			}
+			client, err := github.NewClient()
+			if err != nil {
+				return err
+			}
+			issues, err := client.ListIssues(slug.Owner, slug.Repo, issueState, issueLimit)
+			if err != nil {
+				return err
+			}
+			github.PrintIssuesTable(issues)
+			return nil
+		},
+	}
+	issueListCmd.Flags().StringVarP(&issueState, "state", "s", "open", "Filter by state: open, closed, all")
+	issueListCmd.Flags().IntVarP(&issueLimit, "limit", "l", 20, "Maximum issues to display")
+
+	// 2. sx issue view <number>
+	issueViewCmd := &cobra.Command{
+		Use:   "view <number>",
+		Short: "View details of a specific issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			num, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid issue number: %s", args[0])
+			}
+			slug, err := github.DetectRepoSlug(".")
+			if err != nil {
+				return err
+			}
+			client, err := github.NewClient()
+			if err != nil {
+				return err
+			}
+			it, err := client.GetIssue(slug.Owner, slug.Repo, num)
+			if err != nil {
+				return err
+			}
+			github.PrintIssueDetails(it)
+			return nil
+		},
+	}
+
+	// 3. sx issue create
+	var itTitle, itBody string
+	issueCreateCmd := &cobra.Command{
+		Use:   "create",
+		Short: "Open a new GitHub issue",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(itTitle) == "" {
+				return fmt.Errorf("issue title is required (--title)")
+			}
+			slug, err := github.DetectRepoSlug(".")
+			if err != nil {
+				return err
+			}
+			client, err := github.NewClient()
+			if err != nil {
+				return err
+			}
+			created, err := client.CreateIssue(slug.Owner, slug.Repo, itTitle, itBody)
+			if err != nil {
+				return err
+			}
+			successStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
+			fmt.Printf("%s Created issue #%d: %s\n", successStyle.Render("✔"), created.Number, created.Title)
+			fmt.Printf("  URL: %s\n", created.HTMLURL)
+			return nil
+		},
+	}
+	issueCreateCmd.Flags().StringVarP(&itTitle, "title", "t", "", "Issue title (required)")
+	issueCreateCmd.Flags().StringVarP(&itBody, "body", "b", "", "Issue description / body")
+
+	// 4. sx issue close <number>
+	issueCloseCmd := &cobra.Command{
+		Use:   "close <number>",
+		Short: "Close a GitHub issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			num, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid issue number: %s", args[0])
+			}
+			slug, err := github.DetectRepoSlug(".")
+			if err != nil {
+				return err
+			}
+			client, err := github.NewClient()
+			if err != nil {
+				return err
+			}
+			if err := client.CloseIssue(slug.Owner, slug.Repo, num); err != nil {
+				return err
+			}
+			successStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
+			fmt.Printf("%s Closed issue #%d in %s/%s\n", successStyle.Render("✔"), num, slug.Owner, slug.Repo)
+			return nil
+		},
+	}
+
+	issueCmd.AddCommand(issueListCmd, issueViewCmd, issueCreateCmd, issueCloseCmd)
+	return issueCmd
+}

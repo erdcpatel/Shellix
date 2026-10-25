@@ -86,6 +86,31 @@ func TestMockGitHubClient(t *testing.T) {
 			return
 		}
 
+		if r.URL.Path == "/repos/shellix-dev/shellix/issues" {
+			if r.Method == "POST" {
+				var req createIssueRequest
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				created := Issue{
+					Number: 42,
+					Title:  req.Title,
+					Body:   req.Body,
+					State:  "open",
+				}
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(created)
+				return
+			}
+			issues := []Issue{
+				{
+					Number: 42,
+					Title:  "Security: verify SSH host keys",
+					State:  "open",
+				},
+			}
+			_ = json.NewEncoder(w).Encode(issues)
+			return
+		}
+
 		http.NotFound(w, r)
 	}))
 	defer server.Close()
@@ -115,5 +140,23 @@ func TestMockGitHubClient(t *testing.T) {
 	}
 	if len(prs) != 1 || prs[0].Number != 101 {
 		t.Errorf("expected PR #101, got %+v", prs)
+	}
+
+	// 3. Test ListIssues
+	issues, err := client.ListIssues("shellix-dev", "shellix", "open", 10)
+	if err != nil {
+		t.Fatalf("ListIssues failed: %v", err)
+	}
+	if len(issues) != 1 || issues[0].Number != 42 {
+		t.Errorf("expected issue #42, got %+v", issues)
+	}
+
+	// 4. Test CreateIssue
+	created, err := client.CreateIssue("shellix-dev", "shellix", "New issue", "Description")
+	if err != nil {
+		t.Fatalf("CreateIssue failed: %v", err)
+	}
+	if created.Number != 42 || created.Title != "New issue" {
+		t.Errorf("expected created issue #42, got %+v", created)
 	}
 }

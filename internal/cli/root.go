@@ -39,6 +39,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewGitHubCmd(app),
 		NewPRCmd(app),
 		NewCICmd(app),
+		NewIssueCmd(app),
 		NewFlowCmd(app),
 		NewJavaCmd(app),
 		NewSSHCmd(app),

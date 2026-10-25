@@ -69,3 +69,24 @@ sx ci
 # Check runs for a specific branch
 sx ci --branch main --limit 5
 ```
+
+---
+
+## 5. Issue Management (`sx issue`)
+
+Inspect, create, and close issues directly from your terminal:
+
+```bash
+# List repository issues
+sx issue list
+sx issue list --state closed --limit 10
+
+# View detailed issue description and comment count
+sx issue view 42
+
+# Open a new issue
+sx issue create --title "Investigate high disk I/O" --body "Walk operations should skip .git and vendor"
+
+# Close an issue
+sx issue close 42
+```

@@ -33,6 +33,25 @@ type PullRequest struct {
 	} `json:"base"`
 }
 
+// Issue represents GitHub issue metadata
+type Issue struct {
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	State     string    `json:"state"` // open, closed
+	HTMLURL   string    `json:"html_url"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Labels []struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	} `json:"labels"`
+	Comments int `json:"comments"`
+}
+
 // WorkflowRun represents a GitHub Actions CI execution
 type WorkflowRun struct {
 	ID         int64     `json:"id"`

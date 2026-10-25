@@ -122,7 +122,31 @@ sx init --workspace   # Scaffold .shellix/flows/ in current repo
 eval "$(sx init zsh)" # Instant shell alias setup
 ```
 
-### 4. Multi-Repo Search
+### 6. GitHub Client (HTTPS + PAT)
+
+Manage Pull Requests, Issues, and CI checks without leaving the terminal:
+
+```bash
+# Save PAT to OS Keyring
+sx github auth <token>
+sx github whoami
+
+# Pull requests
+sx pr list
+sx pr view <number>
+sx pr create --title "..." --body "..."
+
+# Issues
+sx issue list
+sx issue view <number>
+sx issue create --title "..." --body "..."
+sx issue close <number>
+
+# CI status
+sx ci
+```
+
+### 7. Multi-Repo Search
 
 ```bash
 # Search across registered repos
