@@ -127,16 +127,20 @@ sx init --workspace   # Scaffold .shellix/flows/ in current repo
 eval "$(sx init zsh)" # Instant shell alias setup
 ```
 
-### 6. GitHub Client (HTTPS + PAT)
+### 6. GitHub & GitHub Enterprise Client (HTTPS + PAT)
 
-Manage Pull Requests, Issues, and CI checks without leaving the terminal:
+Manage Pull Requests, Issues, and CI checks without leaving the terminal (fully compatible with public `github.com`, GitHub Enterprise Cloud `*.ghe.com`, and on-premise GitHub Enterprise Server):
 
 ```bash
-# Save PAT to OS Keyring
+# Save PAT to OS Keyring (defaults to github.com)
 sx github auth <token>
-sx github whoami
 
-# Pull requests
+# Save PAT for GitHub Enterprise host
+sx github auth <token> --host github.mycompany.internal
+sx github whoami --host github.mycompany.internal
+sx github logout --host github.mycompany.internal
+
+# Pull requests (host is auto-detected from repo remote!)
 sx pr list
 sx pr view <number>
 sx pr create --title "..." --body "..."

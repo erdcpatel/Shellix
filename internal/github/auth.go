@@ -35,8 +35,22 @@ func (c *Client) GetCurrentUser() (*GitHubUser, error) {
 	return &user, nil
 }
 
-// SavePAT securely stores the personal access token into the OS Vault
+// VaultKeyForHost returns the storage key for a given GitHub host in the OS Vault
+func VaultKeyForHost(host string) string {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" || host == "github.com" {
+		return "github_token"
+	}
+	return fmt.Sprintf("github_token_%s", host)
+}
+
+// SavePAT securely stores the personal access token for default host into the OS Vault
 func SavePAT(token string) error {
+	return SavePATForHost("github.com", token)
+}
+
+// SavePATForHost securely stores the personal access token for a specific host (e.g. GitHub Enterprise)
+func SavePATForHost(host, token string) error {
 	trimmed := strings.TrimSpace(token)
 	if trimmed == "" {
 		return fmt.Errorf("token cannot be empty")
@@ -45,17 +59,34 @@ func SavePAT(token string) error {
 	core.GlobalSanitizer.RegisterSecret(trimmed)
 
 	v := vault.NewVault("")
-	return v.Set("github_token", trimmed)
+	return v.Set(VaultKeyForHost(host), trimmed)
+}
+
+// DeletePAT removes the personal access token for default host from the OS Vault
+func DeletePAT() error {
+	return DeletePATForHost("github.com")
+}
+
+// DeletePATForHost removes the personal access token for a specific host from the OS Vault
+func DeletePATForHost(host string) error {
+	v := vault.NewVault("")
+	return v.Delete(VaultKeyForHost(host))
 }
 
 // PrintUserInfo renders authenticated user profile and token scopes
-func PrintUserInfo(user *GitHubUser) {
+func PrintUserInfo(user *GitHubUser, host ...string) {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7AA2F7")).Width(16)
 	valStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
 	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
 
-	fmt.Println(titleStyle.Render("GitHub Authentication (HTTPS + PAT)"))
+	targetHost := "github.com"
+	if len(host) > 0 && host[0] != "" {
+		targetHost = host[0]
+	}
+
+	header := fmt.Sprintf("GitHub Authentication [%s] (HTTPS + PAT)", targetHost)
+	fmt.Println(titleStyle.Render(header))
 	fmt.Println()
 	fmt.Printf("  %s %s (@%s)\n", labelStyle.Render("Logged in as:"), valStyle.Render(user.Name), user.Login)
 	fmt.Printf("  %s %s\n", labelStyle.Render("Profile URL:"), user.HTMLURL)

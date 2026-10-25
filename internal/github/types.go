@@ -64,8 +64,9 @@ type WorkflowRun struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// RepoSlug represents owner and repository identifiers
+// RepoSlug represents host, owner and repository identifiers
 type RepoSlug struct {
+	Host  string
 	Owner string
 	Repo  string
 }

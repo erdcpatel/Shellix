@@ -16,53 +16,127 @@ import (
 	"shellix/internal/vault"
 )
 
-const DefaultAPIBase = "https://api.github.com"
+const (
+	DefaultGitHubHost = "github.com"
+	DefaultAPIBase    = "https://api.github.com"
+)
 
-// Client interacts strictly with GitHub REST APIs over HTTPS via Personal Access Token
+// Client interacts with GitHub and GitHub Enterprise REST APIs over HTTPS via Personal Access Token
 type Client struct {
+	Host       string
 	BaseURL    string
 	Token      string
 	HTTPClient *http.Client
 }
 
-// NewClient initializes a client with token discovery from the native OS Vault or environment
+// NewClient initializes a client with host auto-detection from the current repo or defaults to github.com
 func NewClient() (*Client, error) {
-	token := ResolveToken()
+	host := DefaultGitHubHost
+	if slug, err := DetectRepoSlug("."); err == nil && slug.Host != "" {
+		host = slug.Host
+	}
+	return NewClientForHost(host)
+}
+
+// NewClientForHost initializes a client targeting a specific GitHub or GitHub Enterprise host
+func NewClientForHost(host string) (*Client, error) {
+	if host == "" {
+		host = DefaultGitHubHost
+	}
+
+	token := ResolveTokenForHost(host)
 	if token == "" {
-		return nil, fmt.Errorf("no GitHub token found. Store your PAT securely with: sx github auth <token> (or set GITHUB_TOKEN)")
+		hostMsg := ""
+		if host != DefaultGitHubHost {
+			hostMsg = fmt.Sprintf(" for host '%s'", host)
+		}
+		return nil, fmt.Errorf("no GitHub token found%s. Store your PAT securely with: sx github auth <token> --host %s (or set GITHUB_TOKEN)", hostMsg, host)
 	}
 
 	// Register token immediately with sanitizer so it is never printed in logs
 	core.GlobalSanitizer.RegisterSecret(token)
 
+	apiBase := ResolveAPIBase(host)
+
+	// Clean HTTP transport with proxy awareness
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+
 	return &Client{
-		BaseURL: DefaultAPIBase,
+		Host:    host,
+		BaseURL: apiBase,
 		Token:   token,
 		HTTPClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Transport: transport,
+			Timeout:   15 * time.Second,
 		},
 	}, nil
 }
 
-// ResolveToken searches OS Vault (WinCred/Keychain) first, then environment variables
-func ResolveToken() string {
-	// 1. Try OS Keyring Vault
+// ResolveAPIBase determines the REST API endpoint URL for a given GitHub host
+func ResolveAPIBase(host string) string {
+	if apiURL := strings.TrimSpace(os.Getenv("GITHUB_API_URL")); apiURL != "" {
+		return strings.TrimRight(apiURL, "/")
+	}
+
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" || host == DefaultGitHubHost {
+		return DefaultAPIBase
+	}
+
+	// GitHub Enterprise Cloud tenant domains (*.ghe.com)
+	if strings.HasSuffix(host, ".ghe.com") {
+		return fmt.Sprintf("https://api.%s", host)
+	}
+
+	// Standard GitHub Enterprise Server (GHES on-premises / private cloud)
+	return fmt.Sprintf("https://%s/api/v3", host)
+}
+
+// ResolveTokenForHost searches OS Vault (WinCred/Keychain) first, then environment variables for the specified host
+func ResolveTokenForHost(host string) string {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		host = DefaultGitHubHost
+	}
+
+	// 1. Try host-specific key in OS Keyring Vault
 	v := vault.NewVault("")
-	if tok, err := v.Get("github_token"); err == nil && strings.TrimSpace(tok) != "" {
+	key := VaultKeyForHost(host)
+	if tok, err := v.Get(key); err == nil && strings.TrimSpace(tok) != "" {
 		return strings.TrimSpace(tok)
 	}
 
-	// 2. Try GITHUB_TOKEN
+	// 2. If Enterprise, check enterprise-specific environment variables
+	if host != DefaultGitHubHost {
+		if tok := os.Getenv("GITHUB_ENTERPRISE_TOKEN"); strings.TrimSpace(tok) != "" {
+			return strings.TrimSpace(tok)
+		}
+		if tok := os.Getenv("GH_ENTERPRISE_TOKEN"); strings.TrimSpace(tok) != "" {
+			return strings.TrimSpace(tok)
+		}
+	}
+
+	// 3. Check standard GITHUB_TOKEN or GH_TOKEN
 	if tok := os.Getenv("GITHUB_TOKEN"); strings.TrimSpace(tok) != "" {
 		return strings.TrimSpace(tok)
 	}
-
-	// 3. Try GH_TOKEN
 	if tok := os.Getenv("GH_TOKEN"); strings.TrimSpace(tok) != "" {
 		return strings.TrimSpace(tok)
 	}
 
+	// 4. Fallback to default vault key if not already checked
+	if host != DefaultGitHubHost {
+		if tok, err := v.Get("github_token"); err == nil && strings.TrimSpace(tok) != "" {
+			return strings.TrimSpace(tok)
+		}
+	}
+
 	return ""
+}
+
+// ResolveToken returns token for default github.com host
+func ResolveToken() string {
+	return ResolveTokenForHost(DefaultGitHubHost)
 }
 
 // DoRequest performs an authenticated HTTPS request
@@ -105,7 +179,7 @@ func (c *Client) DoRequest(method, endpoint string, body interface{}) (*http.Res
 	return resp, respBytes, nil
 }
 
-// DetectRepoSlug reads the current directory's Git remote and extracts owner/repo
+// DetectRepoSlug reads the current directory's Git remote and extracts host, owner, and repository
 func DetectRepoSlug(dir string) (*RepoSlug, error) {
 	cmd := exec.Command("git", "remote", "get-url", "origin")
 	if dir != "" {
@@ -121,22 +195,27 @@ func DetectRepoSlug(dir string) (*RepoSlug, error) {
 }
 
 var (
-	// git@github.com:owner/repo.git
-	sshRegex = regexp.MustCompile(`^git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$`)
-	// https://github.com/owner/repo.git or https://token@github.com/owner/repo.git
-	httpsRegex = regexp.MustCompile(`^https://(?:[^@]+@)?github\.com/([^/]+)/([^/]+?)(?:\.git)?$`)
+	// Matches SCP syntax: git@<host>:<owner>/<repo>(.git)
+	scpRegex = regexp.MustCompile(`^(?:[\w\-\.]+@)?([^/:]+):([^/]+)/([^/]+?)(?:\.git)?$`)
+	// Matches SSH URL syntax: ssh://(user@)<host>(:port)/<owner>/<repo>(.git)
+	sshURLRegex = regexp.MustCompile(`^ssh://(?:[^@]+@)?([^/:]+)(?::\d+)?/([^/]+)/([^/]+?)(?:\.git)?$`)
+	// Matches HTTPS/HTTP URL syntax: http(s)://(user:pass@)<host>(:port)/<owner>/<repo>(.git)
+	httpURLRegex = regexp.MustCompile(`^https?://(?:[^@]+@)?([^/:]+)(?::\d+)?/([^/]+)/([^/]+?)(?:\.git)?$`)
 )
 
-// ParseGitRemoteURL extracts owner and repository from SSH or HTTPS GitHub URLs
+// ParseGitRemoteURL extracts host, owner and repository from SSH or HTTPS URLs (supporting public GitHub and Enterprise)
 func ParseGitRemoteURL(url string) (*RepoSlug, error) {
 	clean := strings.TrimSpace(url)
 
-	if m := sshRegex.FindStringSubmatch(clean); len(m) == 3 {
-		return &RepoSlug{Owner: m[1], Repo: m[2]}, nil
+	if m := scpRegex.FindStringSubmatch(clean); len(m) == 4 {
+		return &RepoSlug{Host: strings.ToLower(m[1]), Owner: m[2], Repo: m[3]}, nil
 	}
-	if m := httpsRegex.FindStringSubmatch(clean); len(m) == 3 {
-		return &RepoSlug{Owner: m[1], Repo: m[2]}, nil
+	if m := sshURLRegex.FindStringSubmatch(clean); len(m) == 4 {
+		return &RepoSlug{Host: strings.ToLower(m[1]), Owner: m[2], Repo: m[3]}, nil
+	}
+	if m := httpURLRegex.FindStringSubmatch(clean); len(m) == 4 {
+		return &RepoSlug{Host: strings.ToLower(m[1]), Owner: m[2], Repo: m[3]}, nil
 	}
 
-	return nil, fmt.Errorf("unsupported remote URL format (expected github.com): %s", url)
+	return nil, fmt.Errorf("unsupported remote URL format: %s", url)
 }

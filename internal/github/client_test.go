@@ -4,33 +4,71 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
 func TestParseGitRemoteURL(t *testing.T) {
 	cases := []struct {
 		input     string
+		wantHost  string
 		wantOwner string
 		wantRepo  string
 		wantErr   bool
 	}{
 		{
 			input:     "git@github.com:shellix-dev/shellix.git",
+			wantHost:  "github.com",
 			wantOwner: "shellix-dev",
 			wantRepo:  "shellix",
 		},
 		{
 			input:     "https://github.com/torvalds/linux.git",
+			wantHost:  "github.com",
 			wantOwner: "torvalds",
 			wantRepo:  "linux",
 		},
 		{
 			input:     "https://token@github.com/myorg/myrepo",
+			wantHost:  "github.com",
 			wantOwner: "myorg",
 			wantRepo:  "myrepo",
 		},
+		// GitHub Enterprise Server (GHES on-premises)
 		{
-			input:   "https://gitlab.com/owner/repo.git",
+			input:     "git@github.internal.corp:engineering/core-platform.git",
+			wantHost:  "github.internal.corp",
+			wantOwner: "engineering",
+			wantRepo:  "core-platform",
+		},
+		{
+			input:     "https://github.corp.megacorp.com/devops/deployer.git",
+			wantHost:  "github.corp.megacorp.com",
+			wantOwner: "devops",
+			wantRepo:  "deployer",
+		},
+		// GitHub Enterprise Cloud (GHEC tenant)
+		{
+			input:     "git@acme.ghe.com:payments/service.git",
+			wantHost:  "acme.ghe.com",
+			wantOwner: "payments",
+			wantRepo:  "service",
+		},
+		{
+			input:     "https://oauth2:token@acme.ghe.com:8443/payments/service.git",
+			wantHost:  "acme.ghe.com",
+			wantOwner: "payments",
+			wantRepo:  "service",
+		},
+		// SSH URL protocol format
+		{
+			input:     "ssh://git@github.enterprise.internal/team/app.git",
+			wantHost:  "github.enterprise.internal",
+			wantOwner: "team",
+			wantRepo:  "app",
+		},
+		{
+			input:   "not-a-valid-url",
 			wantErr: true,
 		},
 	}
@@ -47,9 +85,50 @@ func TestParseGitRemoteURL(t *testing.T) {
 			t.Errorf("unexpected error for %s: %v", c.input, err)
 			continue
 		}
-		if slug.Owner != c.wantOwner || slug.Repo != c.wantRepo {
-			t.Errorf("for %s: got %s/%s, want %s/%s", c.input, slug.Owner, slug.Repo, c.wantOwner, c.wantRepo)
+		if slug.Host != c.wantHost || slug.Owner != c.wantOwner || slug.Repo != c.wantRepo {
+			t.Errorf("for %s: got host=%s, %s/%s; want host=%s, %s/%s",
+				c.input, slug.Host, slug.Owner, slug.Repo, c.wantHost, c.wantOwner, c.wantRepo)
 		}
+	}
+}
+
+func TestResolveAPIBase(t *testing.T) {
+	// Standard github.com
+	if base := ResolveAPIBase("github.com"); base != "https://api.github.com" {
+		t.Errorf("expected https://api.github.com, got %s", base)
+	}
+	if base := ResolveAPIBase(""); base != "https://api.github.com" {
+		t.Errorf("expected https://api.github.com for empty host, got %s", base)
+	}
+
+	// GitHub Enterprise Cloud (*.ghe.com)
+	if base := ResolveAPIBase("acme.ghe.com"); base != "https://api.acme.ghe.com" {
+		t.Errorf("expected https://api.acme.ghe.com, got %s", base)
+	}
+
+	// GitHub Enterprise Server (GHES on-premises)
+	if base := ResolveAPIBase("github.internal.corp"); base != "https://github.internal.corp/api/v3" {
+		t.Errorf("expected https://github.internal.corp/api/v3, got %s", base)
+	}
+
+	// GITHUB_API_URL override
+	os.Setenv("GITHUB_API_URL", "https://custom.api.endpoint")
+	defer os.Unsetenv("GITHUB_API_URL")
+	if base := ResolveAPIBase("github.com"); base != "https://custom.api.endpoint" {
+		t.Errorf("expected override https://custom.api.endpoint, got %s", base)
+	}
+}
+
+func TestEnterpriseTokenResolution(t *testing.T) {
+	host := "github.enterprise.corp"
+
+	// Test environment variable resolution
+	os.Setenv("GITHUB_ENTERPRISE_TOKEN", "ent-test-token-12345")
+	defer os.Unsetenv("GITHUB_ENTERPRISE_TOKEN")
+
+	tok := ResolveTokenForHost(host)
+	if tok != "ent-test-token-12345" {
+		t.Errorf("expected ent-test-token-12345, got %s", tok)
 	}
 }
 
@@ -116,6 +195,7 @@ func TestMockGitHubClient(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{
+		Host:       "github.com",
 		BaseURL:    server.URL,
 		Token:      "test-pat-token",
 		HTTPClient: server.Client(),

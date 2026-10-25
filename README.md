@@ -63,11 +63,12 @@ Search across multiple codebases with syntax-highlighted matching lines:
 Manage server targets and execute commands in parallel across Linux nodes:
 ![SSH Manager](docs/images/08_shellix_ssh_manager.png)
 
-### 7. GitHub Integration (HTTPS + PAT)
-Manage PRs, Issues, and CI runs directly from your terminal:
+### 7. GitHub & GitHub Enterprise Integration (HTTPS + PAT)
+Manage PRs, Issues, and CI runs directly from your terminal across public GitHub and GitHub Enterprise Server:
 ```bash
-sx github auth            # Save PAT into Windows Credential Manager / Keychain
-sx github whoami          # Verify authenticated profile
+sx github auth            # Save PAT for github.com into OS Keyring
+sx github auth <token> --host github.corp.internal # Save PAT for Enterprise Server
+sx github whoami          # Verify authenticated profile (auto-detects host from repo)
 sx pr list                # List open pull requests
 sx pr view 42             # View PR details
 sx pr create --title "..." # Open new pull request

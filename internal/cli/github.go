@@ -18,20 +18,21 @@ func NewGitHubCmd(app *AppContext) *cobra.Command {
 	ghCmd := &cobra.Command{
 		Use:     "github",
 		Aliases: []string{"gh"},
-		Short:   "GitHub integration via HTTPS + Personal Access Token",
+		Short:   "GitHub & GitHub Enterprise integration via HTTPS + Personal Access Token",
 	}
 
-	// 1. sx github auth [token]
+	// 1. sx github auth [token] [--host <host>]
+	var authHost string
 	ghAuthCmd := &cobra.Command{
 		Use:   "auth [token]",
-		Short: "Store your GitHub Personal Access Token into the native OS Vault",
+		Short: "Store your GitHub or GitHub Enterprise PAT into the native OS Vault",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var token string
 			if len(args) == 1 {
 				token = args[0]
 			} else {
-				fmt.Print("Enter your GitHub Personal Access Token (input hidden): ")
+				fmt.Printf("Enter GitHub Personal Access Token for '%s' (input hidden): ", authHost)
 				byteToken, err := term.ReadPassword(int(syscall.Stdin))
 				fmt.Println()
 				if err != nil {
@@ -44,24 +45,35 @@ func NewGitHubCmd(app *AppContext) *cobra.Command {
 				return fmt.Errorf("token cannot be empty")
 			}
 
-			if err := github.SavePAT(token); err != nil {
+			if err := github.SavePATForHost(authHost, token); err != nil {
 				return fmt.Errorf("failed to save token in vault: %w", err)
 			}
 
 			successStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
-			fmt.Printf("%s GitHub PAT securely stored in %s\n",
-				successStyle.Render("✔ [AUTHENTICATED]"), app.Config.Shell.Default)
-			fmt.Println("You can now run: sx github whoami, sx pr list, sx ci status")
+			fmt.Printf("%s GitHub PAT for host '%s' securely stored in native OS Vault\n",
+				successStyle.Render("✔ [AUTHENTICATED]"), authHost)
+			fmt.Printf("You can now run: sx github whoami --host %s, sx pr list, sx ci status\n", authHost)
 			return nil
 		},
 	}
+	ghAuthCmd.Flags().StringVar(&authHost, "host", "github.com", "GitHub hostname (e.g. github.com, enterprise.internal, or tenant.ghe.com)")
 
-	// 2. sx github whoami
+	// 2. sx github whoami [--host <host>]
+	var whoamiHost string
 	ghWhoamiCmd := &cobra.Command{
 		Use:   "whoami",
 		Short: "Verify authentication and inspect GitHub user profile via HTTPS",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := github.NewClient()
+			targetHost := whoamiHost
+			if targetHost == "" {
+				if slug, err := github.DetectRepoSlug("."); err == nil && slug.Host != "" {
+					targetHost = slug.Host
+				} else {
+					targetHost = "github.com"
+				}
+			}
+
+			client, err := github.NewClientForHost(targetHost)
 			if err != nil {
 				return err
 			}
@@ -71,12 +83,28 @@ func NewGitHubCmd(app *AppContext) *cobra.Command {
 				return err
 			}
 
-			github.PrintUserInfo(user)
+			github.PrintUserInfo(user, targetHost)
 			return nil
 		},
 	}
+	ghWhoamiCmd.Flags().StringVar(&whoamiHost, "host", "", "GitHub hostname (default: auto-detected from repository remote)")
 
-	ghCmd.AddCommand(ghAuthCmd, ghWhoamiCmd)
+	// 3. sx github logout [--host <host>]
+	var logoutHost string
+	ghLogoutCmd := &cobra.Command{
+		Use:   "logout",
+		Short: "Remove GitHub Personal Access Token from the native OS Vault",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := github.DeletePATForHost(logoutHost); err != nil {
+				return fmt.Errorf("failed to delete token: %w", err)
+			}
+			fmt.Printf("✨ Removed GitHub PAT for host '%s' from native OS Vault.\n", logoutHost)
+			return nil
+		},
+	}
+	ghLogoutCmd.Flags().StringVar(&logoutHost, "host", "github.com", "GitHub hostname")
+
+	ghCmd.AddCommand(ghAuthCmd, ghWhoamiCmd, ghLogoutCmd)
 	return ghCmd
 }
 
