@@ -73,3 +73,17 @@ graph TD
 ### 3.7 Native GitHub Suite (`internal/github`)
 - Zero-external-dependency HTTPS client utilizing Personal Access Tokens (PAT) retrieved from native OS Keyring.
 - Full support for Pull Requests (`sx pr list`, `view`, `checkout`), CI checks (`sx ci status`), and Issues (`sx issue list`, `view`, `create`, `close`).
+- First-class support for public `github.com`, GitHub Enterprise Cloud (`*.ghe.com`), and on-premise GitHub Enterprise Server (`/api/v3`) with dynamic remote host auto-detection.
+- Full-screen interactive GitHub TUI Dashboard (`sx gh` / `sx github`) with multi-tab PRs, Issues, and CI inspection.
+
+### 3.8 Universal Command Palette (`internal/palette`)
+- Unified fuzzy launcher aggregating all workflows, JDK versions, SSH profiles, bookmarks, snippets, history runs, and workbench superpowers.
+- Keyboard-driven interactive selection with category badges and instant execution.
+
+### 3.9 Interactive Git Branch & Stash Manager (`internal/git`)
+- Sub-5ms branch listing, ahead/behind upstream commit tracking, and interactive fuzzy branch switcher (`sx branch`).
+- Git stash management (`sx stash list`, `push`, `pop`).
+
+### 3.10 Automated Flow File Watcher (`internal/flow`)
+- Recursive workspace file monitoring with debouncing (`RunWatcher`) and extension filtering.
+- Automatically clears screen and re-runs test/build pipelines upon filesystem changes with zero external runtime dependencies.

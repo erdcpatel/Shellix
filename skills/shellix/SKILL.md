@@ -19,15 +19,17 @@ Use `sx` whenever you need to:
 
 ## Command Reference for Agents
 
-### 1. Git Operations & Dashboard
+### 1. Git Operations, Branch Switcher & Dashboard
 
 | Command | Purpose | Expected Output / Behavior |
 |---|---|---|
 | `sx g` or `sx git` | Interactive full-screen Git Dashboard | Keyboard-driven TUI to stage (`s`), unstage (`u`), commit (`c`), view live diffs, push (`p`), pull (`P`) |
+| `sx b` or `sx branch` | Interactive Git Branch Switcher | Fuzzy searchable branch selector with ahead/behind status and instant checkout |
+| `sx stash` | Git Stash Management | Inspect, push, and pop saved stashes (`sx stash list`, `push -m "..."`, `pop`) |
 | `sx g s` or `sx git status` | Sub-2ms repository status | Current branch, latest commit hash/author, staged, unstaged, untracked files |
 | `sx g <any-git-arg>` | Transparent native Git passthrough | Runs system Git directly with native speed |
 
-### 2. Automation Flows with Parallel Steps & Interactive TUI
+### 2. Automation Flows with Parallel Steps, Watcher & Interactive TUI
 
 Shellix Flows are declarative YAML files that replace complex shell scripts.
 
@@ -42,6 +44,10 @@ sx flow run path/to/flow.yaml
 sx flow run path/to/flow.yaml --tui
 # Or shortcut
 sx flow tui path/to/flow.yaml
+
+# Automatically re-execute flow on file changes (Watcher Mode)
+sx flow watch path/to/flow.yaml
+sx flow run path/to/flow.yaml --watch
 
 # Inspect execution audit logs
 sx flow logs
@@ -132,6 +138,10 @@ eval "$(sx init zsh)" # Instant shell alias setup
 Manage Pull Requests, Issues, and CI checks without leaving the terminal (fully compatible with public `github.com`, GitHub Enterprise Cloud `*.ghe.com`, and on-premise GitHub Enterprise Server):
 
 ```bash
+# Launch interactive GitHub TUI Workbench (PRs, Issues, CI Runs)
+sx gh
+sx github
+
 # Save PAT to OS Keyring (defaults to github.com)
 sx github auth <token>
 
@@ -182,7 +192,16 @@ sx history stats
 sx history clear -y
 ```
 
-### 9. Bookmarks and Snippets
+### 9. Universal Command Palette & Launcher
+
+```bash
+# Launch interactive fuzzy launcher across all flows, JDKs, SSH, bookmarks & history
+sx palette
+sx run
+sx p
+```
+
+### 10. Bookmarks and Snippets
 
 ```bash
 # List all bookmarks

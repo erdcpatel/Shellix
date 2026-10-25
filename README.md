@@ -102,6 +102,22 @@ Full-screen Bubble Tea dashboard with real-time spinners, live log streaming, an
 In-memory searchable command history with deduplication, latency metrics, and success rates:
 ![Command History](docs/images/19_shellix_history.png)
 
+### 14. Interactive GitHub Workbench (`sx gh`)
+Multi-tab TUI for Pull Requests, Issues, and CI checks across public and Enterprise GitHub:
+![GitHub Workbench](docs/images/20_shellix_github_tui.png)
+
+### 15. Universal Command Palette (`sx palette`)
+Fuzzy command launcher connecting flows, Java runtimes, SSH profiles, bookmarks, and history:
+![Command Palette](docs/images/21_shellix_palette.png)
+
+### 16. Flow Automated File Watcher (`sx flow watch`)
+Continuous test-driven development loop that auto-runs pipelines upon file modifications:
+![Flow Watcher](docs/images/22_shellix_flow_watch.png)
+
+### 17. Interactive Git Branch Switcher (`sx branch`)
+Fuzzy branch selector with ahead/behind status, commit summaries, and instant checkout:
+![Branch Switcher](docs/images/23_shellix_git_branch.png)
+
 ---
 
 ## 🚀 Key Features

@@ -18,7 +18,18 @@ func NewGitHubCmd(app *AppContext) *cobra.Command {
 	ghCmd := &cobra.Command{
 		Use:     "github",
 		Aliases: []string{"gh"},
-		Short:   "GitHub & GitHub Enterprise integration via HTTPS + Personal Access Token",
+		Short:   "Interactive GitHub & GitHub Enterprise workbench dashboard",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			slug, err := github.DetectRepoSlug(".")
+			if err != nil {
+				return fmt.Errorf("not in a git repository or remote origin not set: %w", err)
+			}
+			client, err := github.NewClientForHost(slug.Host)
+			if err != nil {
+				return err
+			}
+			return github.RunGitHubTUI(slug, client)
+		},
 	}
 
 	// 1. sx github auth [token] [--host <host>]

@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
 
 	"shellix/internal/flow"
@@ -16,6 +20,7 @@ import (
 func NewFlowCmd(app *AppContext) *cobra.Command {
 	var skipConfirm bool
 	var useTUI bool
+	var watchMode bool
 
 	flowCmd := &cobra.Command{
 		Use:   "flow",
@@ -60,6 +65,18 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			}()
 
 			ctx := flow.NewContext(cwd, branch)
+			if watchMode {
+				sigCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+				defer cancel()
+				cfg := flow.WatcherConfig{
+					Flow:     f,
+					Context:  ctx,
+					WatchDir: cwd,
+				}
+				runErr = flow.RunWatcher(sigCtx, cfg)
+				return runErr
+			}
+
 			if useTUI {
 				runErr = flow.RunFlowTUI(f, ctx)
 				return runErr
@@ -71,7 +88,48 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 		},
 	}
 	flowRunCmd.Flags().BoolVarP(&useTUI, "tui", "t", false, "Launch full-screen interactive Bubble Tea flow dashboard")
+	flowRunCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch directory for file changes and re-run flow")
 	flowRunCmd.Flags().BoolVarP(&skipConfirm, "yes", "y", false, "Execute flow without confirmation prompt")
+
+	var watchExts string
+	flowWatchCmd := &cobra.Command{
+		Use:   "watch <flow-name-or-path>",
+		Short: "Watch workspace for changes and automatically re-execute flow",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			targetPath := resolveFlowPath(args[0])
+			f, err := flow.ParseFile(targetPath)
+			if err != nil {
+				return err
+			}
+
+			cwd, _ := os.Getwd()
+			branch := "unknown"
+			if st, err := app.GitEngine.GetStatus(cwd); err == nil {
+				branch = st.Branch
+			}
+
+			ctx := flow.NewContext(cwd, branch)
+			sigCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+
+			var exts []string
+			if watchExts != "" {
+				for _, e := range strings.Split(watchExts, ",") {
+					exts = append(exts, strings.TrimSpace(e))
+				}
+			}
+
+			cfg := flow.WatcherConfig{
+				Flow:       f,
+				Context:    ctx,
+				WatchDir:   cwd,
+				Extensions: exts,
+			}
+			return flow.RunWatcher(sigCtx, cfg)
+		},
+	}
+	flowWatchCmd.Flags().StringVar(&watchExts, "ext", "", "Comma-separated extensions to watch (e.g. go,yaml,java)")
 
 	flowTUICmd := &cobra.Command{
 		Use:   "tui <flow-name-or-path>",
@@ -172,7 +230,7 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd)
+	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd, flowTUICmd, flowWatchCmd)
 	return flowCmd
 }
 
