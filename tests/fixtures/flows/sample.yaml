@@ -1,0 +1,9 @@
+name: verification-pipeline
+description: Verifies code formatting and tests within Shellix
+steps:
+  - name: check-branch
+    run: echo "Current branch is {{git.branch}}"
+  - name: run-go-tests
+    run: go test ./internal/flow/...
+  - name: search-check
+    run: ./bin/sx search "type Engine struct" --max 3
