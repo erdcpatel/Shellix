@@ -40,6 +40,22 @@ steps:
 	}
 }
 
+func TestParseDuplicateStepNames(t *testing.T) {
+	yamlData := []byte(`
+name: duplicate-steps
+steps:
+  - name: compile
+    run: go build ./...
+  - name: compile
+    run: go test ./...
+`)
+
+	_, err := Parse(yamlData)
+	if err == nil {
+		t.Fatalf("expected error on duplicate step names, but got nil")
+	}
+}
+
 func TestInterpolation(t *testing.T) {
 	_ = os.Setenv("SHELLIX_TEST_KEY", "awesome_value")
 	defer func() { _ = os.Unsetenv("SHELLIX_TEST_KEY") }()
@@ -157,5 +173,52 @@ steps:
 	}
 	if results[1].Output != "received: shellix-token-42" {
 		t.Errorf("expected step 1 output 'received: shellix-token-42', got '%s'", results[1].Output)
+	}
+}
+
+func TestStepMetadataChaining(t *testing.T) {
+	yamlData := []byte(`
+name: metadata-chaining
+steps:
+  - name: first
+    run: echo "hello-metadata"
+  - name: second
+    run: 'echo code: {{steps.first.exit_code}}'
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[1].Output != "code: 0" {
+		t.Errorf("expected exit code 'code: 0', got '%s'", results[1].Output)
+	}
+}
+
+func TestSplitCommandTokens(t *testing.T) {
+	cmd := `mvn clean compile -DskipTests "quoted arg with spaces" 'single quoted'`
+	tokens := splitCommandTokens(cmd)
+	expected := []string{"mvn", "clean", "compile", "-DskipTests", "quoted arg with spaces", "single quoted"}
+
+	if len(tokens) != len(expected) {
+		t.Fatalf("expected %d tokens, got %d: %+v", len(expected), len(tokens), tokens)
+	}
+	for i, exp := range expected {
+		if tokens[i] != exp {
+			t.Errorf("token %d expected '%s', got '%s'", i, exp, tokens[i])
+		}
 	}
 }

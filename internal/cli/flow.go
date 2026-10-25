@@ -7,22 +7,29 @@ import (
 
 	"shellix/internal/flow"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
 // NewFlowCmd handles automation workflow commands
 func NewFlowCmd(app *AppContext) *cobra.Command {
+	var skipConfirm bool
+
 	flowCmd := &cobra.Command{
 		Use:   "flow",
 		Short: "Automation workflow engine with parallel builds and audit logging",
+		Run: func(cmd *cobra.Command, args []string) {
+			listAllFlows()
+		},
 	}
 
 	flowRunCmd := &cobra.Command{
-		Use:   "run <file.yaml>",
+		Use:   "run <flow-name-or-path>",
 		Short: "Execute an automation flow",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, err := flow.ParseFile(args[0])
+			targetPath := resolveFlowPath(args[0])
+			f, err := flow.ParseFile(targetPath)
 			if err != nil {
 				return err
 			}
@@ -39,13 +46,15 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			return err
 		},
 	}
+	flowRunCmd.Flags().BoolVarP(&skipConfirm, "yes", "y", false, "Execute flow without confirmation prompt")
 
 	flowValidateCmd := &cobra.Command{
 		Use:   "validate <file.yaml>",
 		Short: "Validate a flow YAML without running",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, err := flow.ParseFile(args[0])
+			targetPath := resolveFlowPath(args[0])
+			f, err := flow.ParseFile(targetPath)
 			if err != nil {
 				return err
 			}
@@ -56,24 +65,9 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 
 	flowListCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List installed flows in ~/.shellix/flows",
+		Short: "List all installed and workspace flows",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, _ := os.UserHomeDir()
-			flowDir := filepath.Join(home, ".shellix", "flows")
-			entries, err := os.ReadDir(flowDir)
-			if err != nil {
-				if os.IsNotExist(err) {
-					fmt.Println("No flows installed yet. Create flows under ~/.shellix/flows/*.yaml")
-					return nil
-				}
-				return err
-			}
-			fmt.Printf("Installed flows in %s:\n", flowDir)
-			for _, e := range entries {
-				if !e.IsDir() && (filepath.Ext(e.Name()) == ".yaml" || filepath.Ext(e.Name()) == ".yml") {
-					fmt.Printf("  • %s\n", e.Name())
-				}
-			}
+			listAllFlows()
 			return nil
 		},
 	}
@@ -119,4 +113,80 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 
 	flowCmd.AddCommand(flowRunCmd, flowValidateCmd, flowListCmd, flowLogsCmd)
 	return flowCmd
+}
+
+func resolveFlowPath(nameOrPath string) string {
+	if _, err := os.Stat(nameOrPath); err == nil {
+		return nameOrPath
+	}
+
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(".", ".shellix", "flows", nameOrPath),
+		filepath.Join(".", ".shellix", "flows", nameOrPath+".yaml"),
+		filepath.Join(".", "tests", "fixtures", "flows", nameOrPath),
+		filepath.Join(".", "tests", "fixtures", "flows", nameOrPath+".yaml"),
+		filepath.Join(home, ".shellix", "flows", nameOrPath),
+		filepath.Join(home, ".shellix", "flows", nameOrPath+".yaml"),
+	}
+
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return nameOrPath
+}
+
+func listAllFlows() {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00BFFF"))
+	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#E0AF68"))
+
+	fmt.Println(titleStyle.Render("⚡ Shellix Automation Flows"))
+	fmt.Println(metaStyle.Render("─────────────────────────────────────────────────────────────"))
+
+	home, _ := os.UserHomeDir()
+	dirs := []struct {
+		Label string
+		Path  string
+	}{
+		{"Workspace Flows", filepath.Join(".", ".shellix", "flows")},
+		{"Fixture Flows", filepath.Join(".", "tests", "fixtures", "flows")},
+		{"User Global Flows", filepath.Join(home, ".shellix", "flows")},
+	}
+
+	foundTotal := 0
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d.Path)
+		if err != nil || len(entries) == 0 {
+			continue
+		}
+
+		fmt.Printf("\n📂 %s (%s):\n", d.Label, metaStyle.Render(d.Path))
+		for _, e := range entries {
+			ext := filepath.Ext(e.Name())
+			if !e.IsDir() && (ext == ".yaml" || ext == ".yml") {
+				flowPath := filepath.Join(d.Path, e.Name())
+				f, err := flow.ParseFile(flowPath)
+				desc := ""
+				stepsCount := 0
+				if err == nil {
+					desc = f.Description
+					stepsCount = len(f.Steps)
+				}
+				base := e.Name()[:len(e.Name())-len(ext)]
+				fmt.Printf("   • %-20s %s (%d steps)\n", nameStyle.Render(base), descStyle.Render(desc), stepsCount)
+				foundTotal++
+			}
+		}
+	}
+
+	if foundTotal == 0 {
+		fmt.Println("No flows found yet. Create a flow YAML in .shellix/flows/ or ~/.shellix/flows/")
+	} else {
+		fmt.Printf("\nRun any flow: %s\n", metaStyle.Render("sx flow run <flow-name>"))
+	}
+	fmt.Println()
 }

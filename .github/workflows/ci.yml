@@ -1,0 +1,50 @@
+name: Shellix CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-build:
+    name: Test & Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ['1.25', '1.26']
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Run unit & integration test suite
+        run: go test -v -race ./...
+        if: runner.os != 'windows'
+
+      - name: Run unit & integration test suite (Windows)
+        run: go test -v ./...
+        if: runner.os == 'windows'
+
+      - name: Build static binary (Unix)
+        if: runner.os != 'windows'
+        run: |
+          CGO_ENABLED=0 go build -ldflags="-s -w -X shellix/internal/core.Version=0.1.0-alpha" -o bin/shellix ./cmd/shellix
+          ls -lh bin/shellix
+          ./bin/shellix version
+
+      - name: Build static binary (Windows)
+        if: runner.os == 'windows'
+        run: |
+          $env:CGO_ENABLED="0"
+          go build -ldflags="-s -w -X shellix/internal/core.Version=0.1.0-alpha" -o bin\shellix.exe .\cmd\shellix
+          Get-Item bin\shellix.exe | Select-Object Name, Length
+          .\bin\shellix.exe version

@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -36,10 +37,21 @@ func (ctx *Context) SetVar(key, val string) {
 
 // SetStepOutput records output from a completed step for downstream step interpolation
 func (ctx *Context) SetStepOutput(stepName, output string) {
+	ctx.SetStepResult(stepName, output, 0, 0)
+}
+
+// SetStepResult records comprehensive step results for downstream step interpolation
+func (ctx *Context) SetStepResult(stepName, output string, exitCode int, duration time.Duration) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
 	ctx.CustomVars["steps."+stepName+".output"] = output
+	ctx.CustomVars["steps."+stepName+".exit_code"] = fmt.Sprintf("%d", exitCode)
+	if duration > 0 {
+		ctx.CustomVars["steps."+stepName+".duration"] = duration.String()
+		ctx.CustomVars["prev.duration"] = duration.String()
+	}
 	ctx.CustomVars["prev.output"] = output
+	ctx.CustomVars["prev.exit_code"] = fmt.Sprintf("%d", exitCode)
 }
 
 // Interpolate substitutes placeholders like {{project_root}}, {{env.PATH}}, or {{steps.build.output}}

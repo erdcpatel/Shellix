@@ -18,7 +18,16 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 			fmt.Print(core.Banner())
 			fmt.Println()
 			_ = app.GitEngine.PrintStatus("")
-			fmt.Println("\nRun 'sx --help' for commands, or 'sx shell' to launch an interactive PTY shell.")
+			fmt.Println()
+			fmt.Println("⚡ Quick Superpowers:")
+			fmt.Println("  • sx g             Launch interactive Git TUI dashboard (staging & diffs)")
+			fmt.Println("  • sx flow          List and run automation flows with parallel builds")
+			fmt.Println("  • sx java ls       List all discovered JDKs & switch JAVA_HOME")
+			fmt.Println("  • sx search <q>    High-speed parallel code search (.gitignore-aware)")
+			fmt.Println("  • sx doctor        Comprehensive system health & environment diagnostics")
+			fmt.Println("  • sx vault info    Inspect native OS Credential Manager")
+			fmt.Println("  • sx shell         Launch interactive subshell with VT processing")
+			fmt.Println("\nRun 'sx --help' for the complete command tree.")
 		},
 	}
 

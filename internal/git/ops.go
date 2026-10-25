@@ -115,5 +115,17 @@ func GetFileDiff(repoPath, file string, isStaged bool) (string, error) {
 		}
 		return "(Untracked or unmodified file)", nil
 	}
+
+	// Normalize CRLF to LF for consistent cross-platform terminal rendering
+	diffText = strings.ReplaceAll(diffText, "\r\n", "\n")
+
+	// Truncate gigantic diffs to prevent memory pressure and TUI frame lag
+	const maxDiffLines = 500
+	lines := strings.Split(diffText, "\n")
+	if len(lines) > maxDiffLines {
+		truncated := strings.Join(lines[:maxDiffLines], "\n")
+		return fmt.Sprintf("%s\n\n▲ [Diff truncated: showing first %d lines of %d total lines. Run 'git diff %s' for full stream]", truncated, maxDiffLines, len(lines), file), nil
+	}
+
 	return diffText, nil
 }

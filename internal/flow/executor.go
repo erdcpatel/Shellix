@@ -3,6 +3,7 @@ package flow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -214,12 +215,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 			ctx, cancel = context.WithCancel(context.Background())
 		}
 
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.CommandContext(ctx, "cmd.exe", "/c", cmdStr)
-		} else {
-			cmd = exec.CommandContext(ctx, "/bin/sh", "-c", cmdStr)
-		}
+		cmd := buildStepCommand(ctx, cmdStr)
 
 		if workDir != "" {
 			cmd.Dir = workDir
@@ -235,12 +231,23 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		cancel()
 
 		finalOutput = strings.TrimSpace(buf.String())
-		e.Context.SetStepOutput(step.Name, finalOutput)
+		stepDuration := time.Since(start)
+
+		var exitCode int
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				exitCode = exitErr.ExitCode()
+			} else {
+				exitCode = 1
+			}
+		}
+		e.Context.SetStepResult(step.Name, finalOutput, exitCode, stepDuration)
 
 		if err == nil {
 			return ExecutionResult{
 				StepName:   step.Name,
-				Duration:   time.Since(start),
+				Duration:   stepDuration,
 				Success:    true,
 				Output:     finalOutput,
 				IsParallel: isParallel,
@@ -306,4 +313,65 @@ func isSensitiveHostEnv(key string) bool {
 		}
 	}
 	return false
+}
+
+// buildStepCommand constructs an exec.Cmd using direct tokenization for safe commands,
+// falling back to subshell execution only when pipe/redirection operators are present.
+func buildStepCommand(ctx context.Context, cmdStr string) *exec.Cmd {
+	if !hasShellOperators(cmdStr) {
+		tokens := splitCommandTokens(cmdStr)
+		if len(tokens) > 0 {
+			return exec.CommandContext(ctx, tokens[0], tokens[1:]...)
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return exec.CommandContext(ctx, "cmd.exe", "/c", cmdStr)
+	}
+	return exec.CommandContext(ctx, "/bin/sh", "-c", cmdStr)
+}
+
+func hasShellOperators(cmdStr string) bool {
+	operators := []string{"|", "&&", "||", ";", ">", "<", "\n"}
+	for _, op := range operators {
+		if strings.Contains(cmdStr, op) {
+			return true
+		}
+	}
+	return false
+}
+
+func splitCommandTokens(cmd string) []string {
+	var tokens []string
+	var current strings.Builder
+	inSingle := false
+	inDouble := false
+
+	for i := 0; i < len(cmd); i++ {
+		ch := cmd[i]
+		switch ch {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+				continue
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+				continue
+			}
+		case ' ', '\t':
+			if !inSingle && !inDouble {
+				if current.Len() > 0 {
+					tokens = append(tokens, current.String())
+					current.Reset()
+				}
+				continue
+			}
+		}
+		current.WriteByte(ch)
+	}
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+	return tokens
 }
