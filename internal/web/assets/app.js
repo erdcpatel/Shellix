@@ -78,6 +78,12 @@
     loadGitStatus();
     loadFlows();
     loadGridSampleData();
+
+    // Check initial hash route
+    const hash = window.location.hash.replace('#', '');
+    if (hash && ['review', 'grid', 'flow', 'search', 'vault', 'doctor'].includes(hash)) {
+      switchTab(hash);
+    }
   });
 
   // =========================================================================
