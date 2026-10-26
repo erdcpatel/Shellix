@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"shellix/internal/core"
+	"shellix/internal/dataview"
 	"shellix/internal/envvault"
 	"shellix/internal/flow"
 	"shellix/internal/git"
@@ -95,6 +97,7 @@ func (s *Server) Start() (int, error) {
 	mux.HandleFunc("/api/doctor", s.handleAPIDoctor)
 	mux.HandleFunc("/api/metrics", s.handleAPIMetrics)
 	mux.HandleFunc("/api/http/diff", s.handleAPIHTTPDiff)
+	mux.HandleFunc("/api/data/view", s.handleAPIDataView)
 
 	// Register static asset file server
 	assetFS, err := fs.Sub(embeddedAssets, "assets")
@@ -834,6 +837,70 @@ func buildJSONSplitRows(s1, s2 string) []SplitDiffRow {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+func (s *Server) handleAPIDataView(w http.ResponseWriter, r *http.Request) {
+	opts := dataview.InspectOptions{
+		Limit: 100,
+	}
+
+	colsParam := r.URL.Query().Get("cols")
+	if colsParam != "" {
+		for _, c := range strings.Split(colsParam, ",") {
+			if clean := strings.TrimSpace(c); clean != "" {
+				opts.Columns = append(opts.Columns, clean)
+			}
+		}
+	}
+	if filter := r.URL.Query().Get("filter"); filter != "" {
+		opts.Filter = filter
+	}
+
+	// 1. Handle multipart form file upload (drag & drop)
+	if r.Method == http.MethodPost {
+		_ = r.ParseMultipartForm(100 << 20)
+		file, handler, err := r.FormFile("file")
+		if err == nil {
+			defer file.Close()
+			fileBytes, err := io.ReadAll(file)
+			if err == nil {
+				summary, err := dataview.InspectData(fileBytes, handler.Filename, opts)
+				if err == nil {
+					writeJSON(w, summary)
+					return
+				}
+				http.Error(w, fmt.Sprintf("failed parsing data file: %v", err), http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	// 2. Handle file path parameter or default sample fixture
+	filePath := r.URL.Query().Get("file")
+	if filePath == "" {
+		candidatePaths := []string{
+			filepath.Join(s.config.Workspace, "tests", "fixtures", "sample_metrics.parquet.gz"),
+			filepath.Join(s.config.Workspace, "..", "..", "tests", "fixtures", "sample_metrics.parquet.gz"),
+			"tests/fixtures/sample_metrics.parquet.gz",
+			"../../tests/fixtures/sample_metrics.parquet.gz",
+		}
+		for _, p := range candidatePaths {
+			if _, err := os.Stat(p); err == nil {
+				filePath = p
+				break
+			}
+		}
+	} else if !filepath.IsAbs(filePath) {
+		filePath = filepath.Join(s.config.Workspace, filePath)
+	}
+
+	summary, err := dataview.InspectFile(filePath, opts)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed inspecting file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, summary)
 }
 
 func writeJSON(w http.ResponseWriter, data interface{}) {

@@ -6,8 +6,11 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 
+	"shellix/internal/dataview"
 	"shellix/internal/jsonview"
 
 	"github.com/charmbracelet/lipgloss"
@@ -131,19 +134,79 @@ func NewJSONCmd(app *AppContext) *cobra.Command {
 	return jsonCmd
 }
 
-// NewViewCmd provides high-throughput streaming large file viewing
+// NewViewCmd provides high-throughput streaming large file and tabular data viewing
 func NewViewCmd(app *AppContext) *cobra.Command {
 	var maxLines int
+	var headCount int
 	var tailMode bool
 	var followMode bool
 	var lineNums bool
 	var searchPattern string
+	var schemaOnly bool
+	var columnsStr string
+	var exportFormat string
 
 	viewCmd := &cobra.Command{
 		Use:   "view <file>",
-		Short: "High-throughput streaming viewer for large files and logs",
+		Short: "High-throughput streaming viewer for Parquet, CSV, Excel, and large logs",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			filePath := args[0]
+			cleanExt := strings.ToLower(filepath.Ext(filePath))
+			isTabular := cleanExt == ".parquet" || cleanExt == ".csv" || cleanExt == ".tsv" || cleanExt == ".xlsx" ||
+				strings.Contains(strings.ToLower(filePath), ".parquet.") ||
+				strings.Contains(strings.ToLower(filePath), ".csv.")
+
+			if !isTabular {
+				if f, err := os.Open(filePath); err == nil {
+					buf := make([]byte, 4)
+					n, _ := f.Read(buf)
+					_ = f.Close()
+					if n >= 2 && buf[0] == 0x1F && buf[1] == 0x8B {
+						isTabular = true
+					} else if n >= 4 && string(buf[:4]) == "PAR1" {
+						isTabular = true
+					}
+				}
+			}
+
+			if isTabular {
+				var cols []string
+				if columnsStr != "" {
+					for _, c := range strings.Split(columnsStr, ",") {
+						if clean := strings.TrimSpace(c); clean != "" {
+							cols = append(cols, clean)
+						}
+					}
+				}
+				limit := headCount
+				if limit <= 0 {
+					limit = maxLines
+				}
+				opts := dataview.InspectOptions{
+					Columns: cols,
+					Limit:   limit,
+					Filter:  searchPattern,
+				}
+				summary, err := dataview.InspectFile(filePath, opts)
+				if err != nil {
+					return fmt.Errorf("failed inspecting tabular file: %w", err)
+				}
+
+				if exportFormat != "" {
+					out, err := dataview.ExportRows(summary, exportFormat)
+					if err != nil {
+						return err
+					}
+					_, _ = os.Stdout.Write(out)
+					fmt.Println()
+					return nil
+				}
+
+				printTabularSummary(summary, schemaOnly)
+				return nil
+			}
+
 			cfg := jsonview.ViewerConfig{
 				FilePath:        args[0],
 				MaxLines:        maxLines,
@@ -182,12 +245,85 @@ func NewViewCmd(app *AppContext) *cobra.Command {
 	}
 
 	viewCmd.Flags().IntVarP(&maxLines, "lines", "n", 50, "Number of lines to display")
+	viewCmd.Flags().IntVar(&headCount, "head", 25, "Preview first N rows of tabular data (Parquet/CSV)")
 	viewCmd.Flags().BoolVarP(&tailMode, "tail", "t", false, "Display the last N lines (chunked reverse seek)")
 	viewCmd.Flags().BoolVarP(&followMode, "follow", "f", false, "Continuously stream new lines appended to file")
 	viewCmd.Flags().BoolVarP(&lineNums, "numbers", "l", true, "Print line numbers")
-	viewCmd.Flags().StringVarP(&searchPattern, "search", "s", "", "Highlight lines matching search text")
+	viewCmd.Flags().StringVarP(&searchPattern, "search", "s", "", "Filter rows or highlight lines matching search text")
+	viewCmd.Flags().BoolVar(&schemaOnly, "schema", false, "Print tabular schema definition and metadata only")
+	viewCmd.Flags().StringVarP(&columnsStr, "columns", "c", "", "Comma-separated list of columns to project (e.g. 'id,service,latency_ms')")
+	viewCmd.Flags().StringVar(&exportFormat, "export", "", "Export projected rows to 'csv' or 'json'")
 
 	return viewCmd
+}
+
+// NewParquetCmd provides a dedicated shortcut command for Parquet viewing
+func NewParquetCmd(app *AppContext) *cobra.Command {
+	cmd := NewViewCmd(app)
+	cmd.Use = "parquet <file>"
+	cmd.Short = "Inspect, filter, and export Apache Parquet files (.parquet, .parquet.gz)"
+	return cmd
+}
+
+func printTabularSummary(summary *dataview.DataFileSummary, schemaOnly bool) {
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	badgeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500"))
+	colStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00BFFF"))
+
+	fmt.Printf("%s %s\n", headerStyle.Render("📊 Shellix Tabular Data Viewer:"), summary.FileName)
+	fmt.Printf("   Format: %s  •  Compression: %s  •  Total Rows: %s  •  Columns: %d  •  Size: %s\n",
+		badgeStyle.Render(strings.ToUpper(summary.Format)),
+		warnStyle.Render(summary.Compression),
+		badgeStyle.Render(fmt.Sprintf("%d", summary.TotalRows)),
+		summary.TotalCols,
+		formatFileSize(summary.FileSize),
+	)
+	fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────────────"))
+
+	if schemaOnly {
+		fmt.Println(colStyle.Render("SCHEMA DEFINITION:"))
+		for i, col := range summary.Columns {
+			fmt.Printf("  %3d. %-24s %s\n", i+1, col.Name, dimStyle.Render(col.Type))
+		}
+		return
+	}
+
+	if len(summary.Rows) == 0 {
+		fmt.Println(dimStyle.Render("No rows found matching criteria."))
+		return
+	}
+
+	headers := summary.SelectedColumns
+	if len(headers) == 0 {
+		for _, col := range summary.Columns {
+			headers = append(headers, col.Name)
+		}
+	}
+
+	var headerRow []string
+	for _, h := range headers {
+		headerRow = append(headerRow, colStyle.Render(h))
+	}
+	fmt.Println(strings.Join(headerRow, "  |  "))
+	fmt.Println(dimStyle.Render("─────────────────────────────────────────────────────────────────"))
+
+	for _, r := range summary.Rows {
+		var line []string
+		for _, h := range headers {
+			val := fmt.Sprintf("%v", r[h])
+			if len(val) > 28 {
+				val = val[:25] + "..."
+			}
+			line = append(line, val)
+		}
+		fmt.Println(strings.Join(line, "  |  "))
+	}
+
+	if summary.HasMore {
+		fmt.Println(dimStyle.Render(fmt.Sprintf("... Showing %d of %d rows (use --head or --offset to view more)", len(summary.Rows), summary.TotalRows)))
+	}
 }
 
 func formatFileSize(bytes int64) string {

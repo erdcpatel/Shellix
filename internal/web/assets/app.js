@@ -46,6 +46,11 @@
       results: null,
       activeView: 'badges',
     },
+    dataview: {
+      summary: null,
+      selectedColumns: [],
+      filter: '',
+    },
   };
 
   // =========================================================================
@@ -79,6 +84,7 @@
     initVaultView();
     initDoctorView();
     initHTTPDiffView();
+    initDataView();
     initResourceMeter();
     initCommandPalette();
 
@@ -90,7 +96,7 @@
 
     // Check initial hash route
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['review', 'grid', 'flow', 'search', 'vault', 'doctor', 'httpdiff'].includes(hash)) {
+    if (hash && ['review', 'grid', 'flow', 'search', 'vault', 'doctor', 'httpdiff', 'dataview'].includes(hash)) {
       switchTab(hash);
     }
   });
@@ -184,6 +190,8 @@
       loadDoctorData();
     } else if (tabId === 'httpdiff') {
       if (!state.httpdiff.results) runHTTPDiff();
+    } else if (tabId === 'dataview') {
+      if (!state.dataview.summary) loadDataView();
     }
   }
 
@@ -808,6 +816,8 @@
     { title: 'Switch to Environment Vault', tab: 'vault', icon: '🔐' },
     { title: 'Switch to System Diagnostics (Doctor)', tab: 'doctor', icon: '🩺' },
     { title: 'Switch to API & HTTP Diff', tab: 'httpdiff', icon: '🌐' },
+    { title: 'Switch to Data File Viewer (Parquet/CSV)', tab: 'dataview', icon: '📊' },
+    { title: 'Load Sample Parquet File', action: () => document.getElementById('dataLoadSampleBtn')?.click(), icon: '⚡' },
     { title: 'Compare Sample APIs', action: () => document.getElementById('httpLoadSampleBtn')?.click(), icon: '⚡' },
     { title: 'Export Data Grid to CSV', action: () => document.getElementById('exportCsvBtn')?.click(), icon: '📥' },
     { title: 'Export Data Grid to JSON', action: () => document.getElementById('exportJsonBtn')?.click(), icon: '📄' },
@@ -1238,6 +1248,261 @@
         splitBody.appendChild(tr);
       });
     }
+  }
+
+  // =========================================================================
+  // Module 8: Tabular Data File Viewer (Parquet, GZ, CSV, Excel)
+  // =========================================================================
+  function initDataView() {
+    const dropzone = document.getElementById('dataDropzone');
+    const fileInput = document.getElementById('dataFileInput');
+    const uploadBtn = document.getElementById('dataUploadTriggerBtn');
+    const loadSampleBtn = document.getElementById('dataLoadSampleBtn');
+    const selectAllBtn = document.getElementById('dataSelectAllColsBtn');
+    const resetColsBtn = document.getElementById('dataDeselectAllColsBtn');
+    const filterInput = document.getElementById('dataFilterInput');
+    const exportCsvBtn = document.getElementById('dataExportCsvBtn');
+    const exportJsonBtn = document.getElementById('dataExportJsonBtn');
+
+    uploadBtn?.addEventListener('click', () => fileInput?.click());
+    dropzone?.addEventListener('click', (e) => {
+      if (e.target !== fileInput) fileInput?.click();
+    });
+
+    fileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) uploadDataFile(file);
+    });
+
+    dropzone?.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('drag-active');
+    });
+
+    dropzone?.addEventListener('dragleave', () => {
+      dropzone.classList.remove('drag-active');
+    });
+
+    dropzone?.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-active');
+      const file = e.dataTransfer.files?.[0];
+      if (file) uploadDataFile(file);
+    });
+
+    loadSampleBtn?.addEventListener('click', () => {
+      loadDataView('tests/fixtures/sample_metrics.parquet.gz');
+    });
+
+    selectAllBtn?.addEventListener('click', () => {
+      if (!state.dataview.summary) return;
+      state.dataview.selectedColumns = state.dataview.summary.columns.map(c => c.name);
+      updateColumnProjection();
+    });
+
+    resetColsBtn?.addEventListener('click', () => {
+      if (!state.dataview.summary) return;
+      const firstFew = state.dataview.summary.columns.slice(0, 3).map(c => c.name);
+      state.dataview.selectedColumns = firstFew;
+      updateColumnProjection();
+    });
+
+    filterInput?.addEventListener('input', (e) => {
+      state.dataview.filter = e.target.value.trim();
+      updateColumnProjection();
+    });
+
+    exportCsvBtn?.addEventListener('click', () => {
+      exportDataViewRows('csv');
+    });
+
+    exportJsonBtn?.addEventListener('click', () => {
+      exportDataViewRows('json');
+    });
+
+    document.querySelectorAll('.btn-data-density').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.btn-data-density').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        const density = e.target.getAttribute('data-density');
+        const table = document.getElementById('dataViewerTable');
+        if (table) {
+          table.classList.remove('density-compact', 'density-spacious');
+          if (density === 'compact') table.classList.add('density-compact');
+          if (density === 'spacious') table.classList.add('density-spacious');
+        }
+      });
+    });
+  }
+
+  async function loadDataView(file = '', cols = [], filter = '') {
+    showToast('Loading tabular data file...', 'info');
+    let url = `/api/data/view?limit=100`;
+    if (file) url += `&file=${encodeURIComponent(file)}`;
+    if (cols.length > 0) url += `&cols=${encodeURIComponent(cols.join(','))}`;
+    if (filter) url += `&filter=${encodeURIComponent(filter)}`;
+
+    const data = await fetchJSON(url);
+    if (!data) return;
+
+    state.dataview.summary = data;
+    if (cols.length === 0) {
+      state.dataview.selectedColumns = data.selected_columns || data.columns.map(c => c.name);
+    }
+    renderDataView(data);
+    showToast(`Loaded ${data.file_name} (${data.total_rows} rows, ${data.total_cols} cols)`, 'info');
+  }
+
+  async function uploadDataFile(file) {
+    showToast(`Uploading and inspecting ${file.name}...`, 'info');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/data/view?limit=100', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      state.dataview.summary = data;
+      state.dataview.selectedColumns = data.selected_columns || data.columns.map(c => c.name);
+      renderDataView(data);
+      showToast(`Successfully parsed ${file.name} (${data.format.toUpperCase()})`, 'success');
+    } catch (err) {
+      showToast(`Upload failed: ${err.message}`, 'error');
+    }
+  }
+
+  function updateColumnProjection() {
+    if (!state.dataview.summary) return;
+    loadDataView(state.dataview.summary.file_name, state.dataview.selectedColumns, state.dataview.filter);
+  }
+
+  function renderDataView(data) {
+    const profileBar = document.getElementById('dataProfileBar');
+    const columnsCard = document.getElementById('dataColumnsCard');
+    const gridCard = document.getElementById('dataGridCard');
+
+    if (profileBar) profileBar.style.display = 'flex';
+    if (columnsCard) columnsCard.style.display = 'block';
+    if (gridCard) gridCard.style.display = 'block';
+
+    const fnEl = document.getElementById('profileFileName');
+    const fmtEl = document.getElementById('profileFormat');
+    const rowsEl = document.getElementById('profileTotalRows');
+    const colsEl = document.getElementById('profileColsCount');
+    const sizeEl = document.getElementById('profileFileSize');
+
+    if (fnEl) fnEl.textContent = data.file_name;
+    if (fmtEl) {
+      fmtEl.innerHTML = `<span class="badge badge-success">${data.format.toUpperCase()}</span> <span class="badge badge-warning">${data.compression}</span>`;
+    }
+    if (rowsEl) rowsEl.textContent = `${data.total_rows.toLocaleString()} rows`;
+    if (colsEl) colsEl.textContent = `${data.total_cols} columns`;
+    if (sizeEl) sizeEl.textContent = formatBytes(data.file_size);
+
+    // Render Column Toggle Pills
+    const colsList = document.getElementById('dataColumnsList');
+    if (colsList) {
+      colsList.innerHTML = '';
+      data.columns.forEach((col) => {
+        const isSelected = state.dataview.selectedColumns.includes(col.Name || col.name);
+        const colName = col.Name || col.name;
+        const colType = col.Type || col.type || 'STRING';
+
+        const label = document.createElement('label');
+        label.className = `col-toggle-pill ${isSelected ? 'active' : ''}`;
+        label.innerHTML = `
+          <input type="checkbox" ${isSelected ? 'checked' : ''}>
+          <span>${escapeHTML(colName)}</span>
+          <span style="opacity: 0.6; font-size: 10px;">${escapeHTML(colType)}</span>
+        `;
+        const cb = label.querySelector('input');
+        cb?.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            if (!state.dataview.selectedColumns.includes(colName)) {
+              state.dataview.selectedColumns.push(colName);
+            }
+          } else {
+            state.dataview.selectedColumns = state.dataview.selectedColumns.filter(c => c !== colName);
+          }
+          label.classList.toggle('active', e.target.checked);
+          updateColumnProjection();
+        });
+        colsList.appendChild(label);
+      });
+    }
+
+    // Render Table Header & Rows
+    const headerRow = document.getElementById('dataViewerHeader');
+    const bodyEl = document.getElementById('dataViewerBody');
+    const statsEl = document.getElementById('dataGridStats');
+
+    if (statsEl) {
+      statsEl.textContent = `Displaying ${data.rows.length} of ${data.total_rows.toLocaleString()} rows (60 FPS virtual DOM)`;
+    }
+
+    const activeCols = state.dataview.selectedColumns.length > 0
+      ? state.dataview.selectedColumns
+      : data.columns.map(c => c.Name || c.name);
+
+    if (headerRow) {
+      headerRow.innerHTML = '';
+      activeCols.forEach((colName) => {
+        const th = document.createElement('th');
+        th.textContent = colName;
+        headerRow.appendChild(th);
+      });
+    }
+
+    if (bodyEl) {
+      bodyEl.innerHTML = '';
+      if (!data.rows || data.rows.length === 0) {
+        bodyEl.innerHTML = `<tr><td colspan="${activeCols.length || 1}" class="empty-state-sm">No rows match criteria.</td></tr>`;
+      } else {
+        data.rows.forEach((r) => {
+          const tr = document.createElement('tr');
+          activeCols.forEach((colName) => {
+            const td = document.createElement('td');
+            const val = r[colName] === undefined ? '' : String(r[colName]);
+            td.textContent = val;
+            tr.appendChild(td);
+          });
+          bodyEl.appendChild(tr);
+        });
+      }
+    }
+  }
+
+  function exportDataViewRows(format) {
+    if (!state.dataview.summary || !state.dataview.summary.rows) {
+      showToast('No rows to export', 'warning');
+      return;
+    }
+    const data = state.dataview.summary.rows;
+    if (format === 'csv') {
+      const headers = state.dataview.selectedColumns;
+      const csvLines = [headers.join(',')];
+      data.forEach((row) => {
+        const vals = headers.map(h => `"${String(row[h] || '').replace(/"/g, '""')}"`);
+        csvLines.push(vals.join(','));
+      });
+      downloadBlob(csvLines.join('\n'), `${state.dataview.summary.file_name}.csv`, 'text/csv');
+      showToast('Exported CSV file', 'info');
+    } else {
+      const jsonStr = JSON.stringify(data, null, 2);
+      downloadBlob(jsonStr, `${state.dataview.summary.file_name}.json`, 'application/json');
+      showToast('Exported JSON file', 'info');
+    }
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
   }
 
   function escapeHTML(str) {

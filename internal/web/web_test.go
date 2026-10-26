@@ -141,6 +141,29 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 	if len(diffData.SplitRows) == 0 {
 		t.Errorf("expected split diff rows in /api/http/diff response")
 	}
+
+	// 9. Verify /api/data/view (Parquet & Tabular Data Viewer)
+	dataViewResp, err := http.Get(baseURL + "/api/data/view")
+	if err != nil {
+		t.Fatalf("failed requesting /api/data/view: %v", err)
+	}
+	defer dataViewResp.Body.Close()
+	if dataViewResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /api/data/view, got %d", dataViewResp.StatusCode)
+	}
+
+	var dataViewSummary struct {
+		Format    string                   `json:"format"`
+		TotalRows int64                    `json:"total_rows"`
+		Columns   []map[string]interface{} `json:"columns"`
+		Rows      []map[string]interface{} `json:"rows"`
+	}
+	if err := json.NewDecoder(dataViewResp.Body).Decode(&dataViewSummary); err != nil {
+		t.Fatalf("failed decoding /api/data/view: %v", err)
+	}
+	if dataViewSummary.Format != "parquet" || dataViewSummary.TotalRows != 20 {
+		t.Errorf("unexpected dataview summary: %+v", dataViewSummary)
+	}
 }
 
 func TestParseUnifiedDiff(t *testing.T) {
