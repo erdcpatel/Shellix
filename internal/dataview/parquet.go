@@ -17,7 +17,7 @@ func ReadParquetData(data []byte, opts InspectOptions) (*DataFileSummary, error)
 
 	reader := bytes.NewReader(data)
 
-	var selectedCols []string
+	selectedCols := make([]string, 0)
 	if len(opts.Columns) > 0 {
 		selectedCols = opts.Columns
 	}
@@ -29,7 +29,7 @@ func ReadParquetData(data []byte, opts InspectOptions) (*DataFileSummary, error)
 
 	totalRows := fr.NumRows()
 
-	var allCols []ColumnMeta
+	allCols := make([]ColumnMeta, 0)
 	colNames := make(map[string]bool)
 
 	// Extract schema columns
@@ -72,7 +72,7 @@ func ReadParquetData(data []byte, opts InspectOptions) (*DataFileSummary, error)
 		}
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0)
 	for len(rows) < limit {
 		row, err := fr.NextRow()
 		if err != nil {
@@ -82,13 +82,17 @@ func ReadParquetData(data []byte, opts InspectOptions) (*DataFileSummary, error)
 			break
 		}
 
-		// Normalize byte slices to strings for human readability
-		normalized := make(map[string]interface{})
+		// Normalize byte slices to strings and deeply normalize nested structures
+		normalized := make(map[string]interface{}, len(row))
 		for k, v := range row {
-			if b, ok := v.([]byte); ok {
-				normalized[k] = string(b)
-			} else {
-				normalized[k] = v
+			normalized[k] = NormalizeValue(v)
+		}
+
+		// Also populate flattened dotted keys for nested structs so field lookups
+		// (e.g. "user.name", "metrics.latency_ms") succeed directly in Tabulator and ExportRows
+		for k, v := range normalized {
+			if m, ok := v.(map[string]interface{}); ok {
+				flattenNestedMap(k, m, normalized)
 			}
 		}
 
@@ -125,3 +129,17 @@ func ReadParquetData(data []byte, opts InspectOptions) (*DataFileSummary, error)
 		HasMore:         hasMore,
 	}, nil
 }
+
+func flattenNestedMap(prefix string, m map[string]interface{}, target map[string]interface{}) {
+	for k, v := range m {
+		fullKey := prefix + "." + k
+		if subMap, ok := v.(map[string]interface{}); ok {
+			flattenNestedMap(fullKey, subMap, target)
+		} else {
+			if _, exists := target[fullKey]; !exists {
+				target[fullKey] = v
+			}
+		}
+	}
+}
+

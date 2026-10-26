@@ -50,6 +50,7 @@
       summary: null,
       selectedColumns: [],
       filter: '',
+      isUploaded: false,
     },
   };
 
@@ -1352,15 +1353,53 @@
 
     selectAllBtn?.addEventListener('click', () => {
       if (!state.dataview.summary) return;
-      state.dataview.selectedColumns = state.dataview.summary.columns.map(c => c.name);
-      updateColumnProjection();
+      const allCols = Array.isArray(state.dataview.summary?.columns) ? state.dataview.summary.columns : [];
+      const colNames = allCols.map(c => c.Name || c.name);
+      state.dataview.selectedColumns = [...colNames];
+
+      document.querySelectorAll('#dataColumnsList .col-toggle-pill').forEach(pill => {
+        pill.classList.add('active');
+        const cb = pill.querySelector('input');
+        if (cb) cb.checked = true;
+      });
+
+      if (state.dataview.tabulatorInstance) {
+        colNames.forEach(c => state.dataview.tabulatorInstance.showColumn(c));
+      }
+
+      if (!state.dataview.isUploaded) {
+        updateColumnProjection();
+      }
     });
 
     resetColsBtn?.addEventListener('click', () => {
       if (!state.dataview.summary) return;
-      const firstFew = state.dataview.summary.columns.slice(0, 3).map(c => c.name);
-      state.dataview.selectedColumns = firstFew;
-      updateColumnProjection();
+      const allCols = Array.isArray(state.dataview.summary?.columns) ? state.dataview.summary.columns : [];
+      const firstFew = allCols.slice(0, 3).map(c => c.Name || c.name);
+      state.dataview.selectedColumns = [...firstFew];
+
+      document.querySelectorAll('#dataColumnsList .col-toggle-pill').forEach(pill => {
+        const colName = pill.getAttribute('data-col-name');
+        const isSelected = firstFew.includes(colName);
+        pill.classList.toggle('active', isSelected);
+        const cb = pill.querySelector('input');
+        if (cb) cb.checked = isSelected;
+      });
+
+      if (state.dataview.tabulatorInstance) {
+        allCols.forEach(c => {
+          const colName = c.Name || c.name;
+          if (firstFew.includes(colName)) {
+            state.dataview.tabulatorInstance.showColumn(colName);
+          } else {
+            state.dataview.tabulatorInstance.hideColumn(colName);
+          }
+        });
+      }
+
+      if (!state.dataview.isUploaded) {
+        updateColumnProjection();
+      }
     });
 
     toggleColsBtn?.addEventListener('click', () => {
@@ -1411,6 +1450,25 @@
         }
       });
     });
+
+    // Global filter search box (attached once)
+    filterInput?.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      if (!state.dataview.tabulatorInstance) return;
+      if (!query) {
+        state.dataview.tabulatorInstance.clearFilter();
+      } else {
+        state.dataview.tabulatorInstance.setFilter((row) => {
+          return Object.values(row).some(v => {
+            if (v === null || v === undefined) return false;
+            if (typeof v === 'object') {
+              return JSON.stringify(v).toLowerCase().includes(query);
+            }
+            return String(v).toLowerCase().includes(query);
+          });
+        });
+      }
+    });
   }
 
   async function loadDataView(file = '', cols = [], filter = '') {
@@ -1423,12 +1481,16 @@
     const data = await fetchJSON(url);
     if (!data) return;
 
+    state.dataview.isUploaded = false;
     state.dataview.summary = data;
+    const availableCols = Array.isArray(data?.columns) ? data.columns : [];
     if (cols.length === 0) {
-      state.dataview.selectedColumns = data.selected_columns || data.columns.map(c => c.name);
+      state.dataview.selectedColumns = (Array.isArray(data?.selected_columns) && data.selected_columns.length > 0)
+        ? data.selected_columns
+        : availableCols.map(c => c?.Name || c?.name);
     }
     renderDataView(data);
-    showToast(`Loaded ${data.file_name} (${data.total_rows} rows, ${data.total_cols} cols)`, 'info');
+    showToast(`Loaded ${data?.file_name || 'file'} (${(data?.total_rows ?? 0).toLocaleString()} rows, ${data?.total_cols ?? 0} cols)`, 'info');
   }
 
   async function uploadDataFile(file) {
@@ -1451,10 +1513,14 @@
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
+      state.dataview.isUploaded = true;
       state.dataview.summary = data;
-      state.dataview.selectedColumns = data.selected_columns || data.columns.map(c => c.name);
+      const availableCols = Array.isArray(data?.columns) ? data.columns : [];
+      state.dataview.selectedColumns = (Array.isArray(data?.selected_columns) && data.selected_columns.length > 0)
+        ? data.selected_columns
+        : availableCols.map(c => c?.Name || c?.name);
       renderDataView(data);
-      showToast(`Successfully parsed ${file.name} (${data.format.toUpperCase()})`, 'success');
+      showToast(`Successfully parsed ${file.name} (${(data?.format || '').toUpperCase()})`, 'success');
     } catch (err) {
       showToast(`Upload failed: ${err.message}`, 'error');
     }
@@ -1462,10 +1528,12 @@
 
   function updateColumnProjection() {
     if (!state.dataview.summary) return;
-    loadDataView(state.dataview.summary.file_name, state.dataview.selectedColumns, state.dataview.filter);
+    loadDataView(state.dataview.summary?.file_name || '', state.dataview.selectedColumns || [], state.dataview.filter || '');
   }
 
   function renderDataView(data) {
+    if (!data) return;
+
     const dropzone = document.getElementById('dataDropzone');
     const profileBar = document.getElementById('dataProfileBar');
     const columnsCard = document.getElementById('dataColumnsCard');
@@ -1483,25 +1551,48 @@
     const colsEl = document.getElementById('profileColsCount');
     const sizeEl = document.getElementById('profileFileSize');
 
-    if (fnEl) fnEl.textContent = data.file_name;
+    if (fnEl) fnEl.textContent = data?.file_name || 'dataset';
     if (fmtEl) {
-      fmtEl.innerHTML = `<span class="badge badge-success">${data.format.toUpperCase()}</span> <span class="badge badge-warning">${data.compression}</span>`;
+      const fmtStr = (data?.format || 'UNKNOWN').toUpperCase();
+      const compStr = data?.compression || 'none';
+      fmtEl.innerHTML = `<span class="badge badge-success">${escapeHTML(fmtStr)}</span> <span class="badge badge-warning">${escapeHTML(compStr)}</span>`;
     }
-    if (rowsEl) rowsEl.textContent = `${data.total_rows.toLocaleString()} rows`;
-    if (colsEl) colsEl.textContent = `${data.total_cols} columns`;
-    if (sizeEl) sizeEl.textContent = formatBytes(data.file_size);
+    const totalRows = data?.total_rows ?? 0;
+    const totalCols = data?.total_cols ?? 0;
+    if (rowsEl) rowsEl.textContent = `${totalRows.toLocaleString()} rows`;
+    if (colsEl) colsEl.textContent = `${totalCols} columns`;
+    if (sizeEl) sizeEl.textContent = formatBytes(data?.file_size || 0);
+
+    const allCols = Array.isArray(data?.columns) ? data.columns : [];
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+
+    // Fallback: if columns array was empty but rows exist, extract columns from first row
+    let effectiveCols = allCols;
+    if (effectiveCols.length === 0 && rows.length > 0) {
+      effectiveCols = Object.keys(rows[0]).map(k => ({ name: k, type: 'UNKNOWN', nullable: true }));
+      if (state.dataview.summary && (!Array.isArray(state.dataview.summary.columns) || state.dataview.summary.columns.length === 0)) {
+        state.dataview.summary.columns = effectiveCols;
+      }
+    }
+
+    if (!Array.isArray(state.dataview.selectedColumns) || state.dataview.selectedColumns.length === 0) {
+      state.dataview.selectedColumns = (Array.isArray(data?.selected_columns) && data.selected_columns.length > 0)
+        ? data.selected_columns
+        : effectiveCols.map(c => c?.Name || c?.name);
+    }
 
     // Render Column Toggle Pills
     const colsList = document.getElementById('dataColumnsList');
     if (colsList) {
       colsList.innerHTML = '';
-      data.columns.forEach((col) => {
+      effectiveCols.forEach((col) => {
         const colName = col.Name || col.name;
         const colType = col.Type || col.type || 'STRING';
         const isSelected = state.dataview.selectedColumns.includes(colName);
 
         const label = document.createElement('label');
         label.className = `col-toggle-pill ${isSelected ? 'active' : ''}`;
+        label.setAttribute('data-col-name', colName);
         label.innerHTML = `
           <input type="checkbox" ${isSelected ? 'checked' : ''}>
           <span>${escapeHTML(colName)}</span>
@@ -1509,46 +1600,81 @@
         `;
         const cb = label.querySelector('input');
         cb?.addEventListener('change', (e) => {
-          if (e.target.checked) {
+          const isChecked = e.target.checked;
+          if (isChecked) {
             if (!state.dataview.selectedColumns.includes(colName)) {
               state.dataview.selectedColumns.push(colName);
             }
+            if (state.dataview.tabulatorInstance) {
+              state.dataview.tabulatorInstance.showColumn(colName);
+            }
           } else {
             state.dataview.selectedColumns = state.dataview.selectedColumns.filter(c => c !== colName);
+            if (state.dataview.tabulatorInstance) {
+              state.dataview.tabulatorInstance.hideColumn(colName);
+            }
           }
-          label.classList.toggle('active', e.target.checked);
-          updateColumnProjection();
+          label.classList.toggle('active', isChecked);
+          if (!state.dataview.isUploaded) {
+            updateColumnProjection();
+          }
         });
         colsList.appendChild(label);
       });
     }
 
-    const activeCols = state.dataview.selectedColumns.length > 0
-      ? state.dataview.selectedColumns
-      : data.columns.map(c => c.Name || c.name);
-
     const statsEl = document.getElementById('dataGridStats');
     if (statsEl) {
-      statsEl.textContent = `Displaying ${data.rows.length} of ${data.total_rows.toLocaleString()} rows (Virtual DOM 60 FPS)`;
+      statsEl.textContent = `Displaying ${rows.length} of ${totalRows.toLocaleString()} rows (Virtual DOM 60 FPS)`;
     }
 
     // Build Tabulator columns with interactive header filter inputs & freeze first column
-    const tabColumns = activeCols.map((colName, idx) => ({
-      title: colName,
-      field: colName,
-      headerFilter: "input",
-      headerFilterPlaceholder: "Filter...",
-      resizable: true,
-      frozen: idx === 0, // Freeze first column for horizontal scrolling
-      sorter: "string",
-    }));
+    const tabColumns = effectiveCols.map((col, idx) => {
+      const colName = col.Name || col.name;
+      const isVisible = state.dataview.selectedColumns.includes(colName);
+      return {
+        title: colName,
+        field: colName,
+        visible: isVisible,
+        headerFilter: "input",
+        headerFilterPlaceholder: "Filter...",
+        resizable: true,
+        frozen: idx === 0, // Freeze first column for horizontal scrolling
+        sorter: "string",
+        formatter: function(cell) {
+          let val = cell.getValue();
+          if (val === undefined || val === null) {
+            const field = cell.getColumn().getField();
+            if (field && field.includes('.')) {
+              const parts = field.split('.');
+              let cur = cell.getData();
+              for (const p of parts) {
+                if (cur === null || cur === undefined) {
+                  cur = undefined;
+                  break;
+                }
+                cur = cur[p];
+              }
+              if (cur !== undefined) {
+                val = cur;
+              }
+            }
+          }
+          if (val !== null && val !== undefined && typeof val === 'object') {
+            return JSON.stringify(val);
+          }
+          return val ?? '';
+        },
+      };
+    });
 
     if (state.dataview.tabulatorInstance) {
       state.dataview.tabulatorInstance.setColumns(tabColumns);
-      state.dataview.tabulatorInstance.setData(data.rows);
+      state.dataview.tabulatorInstance.setData(rows);
     } else if (window.Tabulator) {
       state.dataview.tabulatorInstance = new Tabulator("#tabulatorGridContainer", {
-        data: data.rows,
+        nestedFieldSeparator: false,
+        data: rows,
         columns: tabColumns,
         layout: "fitDataFill",
         movableColumns: true,
@@ -1558,40 +1684,46 @@
         placeholder: "No records found matching criteria",
       });
     }
-
-    // Connect global search box
-    const filterInput = document.getElementById('dataFilterInput');
-    filterInput?.addEventListener('input', (e) => {
-      const query = e.target.value.toLowerCase();
-      if (!state.dataview.tabulatorInstance) return;
-      if (!query) {
-        state.dataview.tabulatorInstance.clearFilter();
-      } else {
-        state.dataview.tabulatorInstance.setFilter((row) => {
-          return Object.values(row).some(v => String(v).toLowerCase().includes(query));
-        });
-      }
-    });
   }
 
   function exportDataViewRows(format) {
-    if (!state.dataview.summary || !state.dataview.summary.rows) {
+    if (!state.dataview.summary || !Array.isArray(state.dataview.summary.rows)) {
       showToast('No rows to export', 'warning');
       return;
     }
     const data = state.dataview.summary.rows;
     if (format === 'csv') {
-      const headers = state.dataview.selectedColumns;
+      const headers = Array.isArray(state.dataview.selectedColumns) && state.dataview.selectedColumns.length > 0
+        ? state.dataview.selectedColumns
+        : (data.length > 0 ? Object.keys(data[0]) : []);
       const csvLines = [headers.join(',')];
       data.forEach((row) => {
-        const vals = headers.map(h => `"${String(row[h] || '').replace(/"/g, '""')}"`);
+        const vals = headers.map(h => {
+          let val = row[h];
+          if ((val === undefined || val === null) && h.includes('.')) {
+            const parts = h.split('.');
+            let cur = row;
+            for (const p of parts) {
+              if (cur === null || cur === undefined) {
+                cur = undefined;
+                break;
+              }
+              cur = cur[p];
+            }
+            if (cur !== undefined) val = cur;
+          }
+          if (val !== null && val !== undefined && typeof val === 'object') {
+            val = JSON.stringify(val);
+          }
+          return `"${String(val ?? '').replace(/"/g, '""')}"`;
+        });
         csvLines.push(vals.join(','));
       });
-      downloadBlob(csvLines.join('\n'), `${state.dataview.summary.file_name}.csv`, 'text/csv');
+      downloadBlob(csvLines.join('\n'), `${state.dataview.summary?.file_name || 'data'}.csv`, 'text/csv');
       showToast('Exported CSV file', 'info');
     } else {
       const jsonStr = JSON.stringify(data, null, 2);
-      downloadBlob(jsonStr, `${state.dataview.summary.file_name}.json`, 'application/json');
+      downloadBlob(jsonStr, `${state.dataview.summary?.file_name || 'data'}.json`, 'application/json');
       showToast('Exported JSON file', 'info');
     }
   }

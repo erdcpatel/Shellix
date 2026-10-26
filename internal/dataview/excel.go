@@ -32,8 +32,23 @@ func ReadExcelData(data []byte, opts InspectOptions) (*DataFileSummary, error) {
 		return nil, fmt.Errorf("failed reading sheet %s: %w", activeSheet, err)
 	}
 
+	allCols := make([]ColumnMeta, 0)
+	activeCols := make([]string, 0)
+	rows := make([]map[string]interface{}, 0)
+
 	if !rowsIter.Next() {
-		return nil, fmt.Errorf("sheet %s is empty", activeSheet)
+		return &DataFileSummary{
+			Format:          "xlsx",
+			TotalRows:       0,
+			TotalCols:       0,
+			FileSize:        int64(len(data)),
+			Columns:         allCols,
+			SelectedColumns: activeCols,
+			Rows:            rows,
+			Offset:          opts.Offset,
+			Limit:           opts.Limit,
+			HasMore:         false,
+		}, nil
 	}
 
 	headers, err := rowsIter.Columns()
@@ -41,7 +56,6 @@ func ReadExcelData(data []byte, opts InspectOptions) (*DataFileSummary, error) {
 		return nil, fmt.Errorf("failed reading excel headers: %w", err)
 	}
 
-	var allCols []ColumnMeta
 	for i, h := range headers {
 		clean := strings.TrimSpace(h)
 		if clean == "" {
@@ -59,7 +73,6 @@ func ReadExcelData(data []byte, opts InspectOptions) (*DataFileSummary, error) {
 		colIdxMap[c.Name] = i
 	}
 
-	var activeCols []string
 	if len(opts.Columns) > 0 {
 		activeCols = opts.Columns
 	} else {
@@ -78,7 +91,6 @@ func ReadExcelData(data []byte, opts InspectOptions) (*DataFileSummary, error) {
 	}
 
 	totalRows := int64(0)
-	var rows []map[string]interface{}
 	fLower := strings.ToLower(opts.Filter)
 
 	for rowsIter.Next() {

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"shellix/internal/core"
@@ -42,13 +43,20 @@ type ServerConfig struct {
 	SessionToken string
 }
 
+type uploadCacheEntry struct {
+	rawBytes []byte
+	summary  *dataview.DataFileSummary
+}
+
 // Server provides the zero-latency embedded HTTP server
 type Server struct {
-	config       ServerConfig
-	listener     net.Listener
-	httpServer   *http.Server
-	actualPort   int
-	sessionToken string
+	config        ServerConfig
+	listener      net.Listener
+	httpServer    *http.Server
+	actualPort    int
+	sessionToken  string
+	uploadCacheMu sync.RWMutex
+	uploadCache   map[string]uploadCacheEntry
 }
 
 // NewServer initializes a web server instance
@@ -71,6 +79,7 @@ func NewServer(cfg ServerConfig) *Server {
 	return &Server{
 		config:       cfg,
 		sessionToken: token,
+		uploadCache:  make(map[string]uploadCacheEntry),
 	}
 }
 
@@ -880,6 +889,43 @@ func buildJSONSplitRows(s1, s2 string) []SplitDiffRow {
 	return rows
 }
 
+func (s *Server) cacheUploadedData(filename string, data []byte, summary *dataview.DataFileSummary) {
+	s.uploadCacheMu.Lock()
+	defer s.uploadCacheMu.Unlock()
+	if s.uploadCache == nil {
+		s.uploadCache = make(map[string]uploadCacheEntry)
+	}
+	if len(s.uploadCache) >= 40 {
+		count := 0
+		for k := range s.uploadCache {
+			delete(s.uploadCache, k)
+			count++
+			if count >= 20 {
+				break
+			}
+		}
+	}
+	entry := uploadCacheEntry{
+		rawBytes: data,
+		summary:  summary,
+	}
+	s.uploadCache[filename] = entry
+	s.uploadCache[filepath.Base(filename)] = entry
+}
+
+func (s *Server) getCachedUploadedData(filename string) (uploadCacheEntry, bool) {
+	s.uploadCacheMu.RLock()
+	defer s.uploadCacheMu.RUnlock()
+	if s.uploadCache == nil {
+		return uploadCacheEntry{}, false
+	}
+	entry, ok := s.uploadCache[filename]
+	if !ok {
+		entry, ok = s.uploadCache[filepath.Base(filename)]
+	}
+	return entry, ok
+}
+
 func (s *Server) handleAPIDataView(w http.ResponseWriter, r *http.Request) {
 	opts := dataview.InspectOptions{
 		Limit: 100,
@@ -899,30 +945,57 @@ func (s *Server) handleAPIDataView(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Handle multipart form file upload (drag & drop)
 	if r.Method == http.MethodPost {
-		_ = r.ParseMultipartForm(100 << 20)
+		if err := r.ParseMultipartForm(100 << 20); err != nil {
+			http.Error(w, fmt.Sprintf("malformed multipart form: %v", err), http.StatusBadRequest)
+			return
+		}
 		file, handler, err := r.FormFile("file")
-		if err == nil {
-			defer file.Close()
-			limited := io.LimitReader(file, dataview.MaxDecompressedBytes+1)
-			fileBytes, err := io.ReadAll(limited)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("missing or invalid 'file' field in multipart form: %v", err), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		limited := io.LimitReader(file, dataview.MaxDecompressedBytes+1)
+		fileBytes, err := io.ReadAll(limited)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed reading uploaded file: %v", err), http.StatusBadRequest)
+			return
+		}
+		if int64(len(fileBytes)) > dataview.MaxDecompressedBytes {
+			http.Error(w, fmt.Sprintf("uploaded file exceeds size limit (%d bytes)", dataview.MaxDecompressedBytes), http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		summary, err := dataview.InspectData(fileBytes, handler.Filename, opts)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed parsing data file: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Retain uploaded file and summary in session cache
+		s.cacheUploadedData(handler.Filename, fileBytes, summary)
+
+		writeJSON(w, summary)
+		return
+	}
+
+	// 2. Handle cached upload or file path parameter or default sample fixture
+	filePath := r.URL.Query().Get("file")
+	if filePath != "" {
+		if cached, ok := s.getCachedUploadedData(filePath); ok {
+			summary, err := dataview.InspectData(cached.rawBytes, filePath, opts)
 			if err == nil {
-				if int64(len(fileBytes)) > dataview.MaxDecompressedBytes {
-					http.Error(w, fmt.Sprintf("uploaded file exceeds size limit (%d bytes)", dataview.MaxDecompressedBytes), http.StatusRequestEntityTooLarge)
-					return
-				}
-				summary, err := dataview.InspectData(fileBytes, handler.Filename, opts)
-				if err == nil {
-					writeJSON(w, summary)
-					return
-				}
-				http.Error(w, fmt.Sprintf("failed parsing data file: %v", err), http.StatusBadRequest)
+				writeJSON(w, summary)
+				return
+			}
+			if cached.summary != nil {
+				writeJSON(w, cached.summary)
 				return
 			}
 		}
 	}
 
-	// 2. Handle file path parameter or default sample fixture
-	filePath := r.URL.Query().Get("file")
 	if filePath == "" {
 		candidatePaths := []string{
 			filepath.Join(s.config.Workspace, "tests", "fixtures", "sample_metrics.parquet.gz"),
@@ -942,6 +1015,10 @@ func (s *Server) handleAPIDataView(w http.ResponseWriter, r *http.Request) {
 
 	summary, err := dataview.InspectFile(filePath, opts)
 	if err != nil {
+		if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
+			http.Error(w, fmt.Sprintf("file not found: %s", filePath), http.StatusNotFound)
+			return
+		}
 		http.Error(w, fmt.Sprintf("failed inspecting file: %v", err), http.StatusInternalServerError)
 		return
 	}

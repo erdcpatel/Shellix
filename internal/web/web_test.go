@@ -1,12 +1,17 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
+
+	goparquet "github.com/fraugster/parquet-go"
+	"github.com/fraugster/parquet-go/parquetschema"
 )
 
 func TestWebServerLifecycleAndAPIs(t *testing.T) {
@@ -372,5 +377,164 @@ func TestWebServerSecurityProtections(t *testing.T) {
 	}
 
 	_ = port
+}
+
+func TestDataViewMultipartUploadAndSessionCache(t *testing.T) {
+	cfg := ServerConfig{
+		Host:      "127.0.0.1",
+		Port:      9890,
+		Workspace: ".",
+	}
+	server := NewServer(cfg)
+	_, err := server.Start()
+	if err != nil {
+		t.Fatalf("failed starting server: %v", err)
+	}
+	defer func() { _ = server.Stop() }()
+
+	baseURL := server.URL()
+	token := server.SessionToken()
+	client := &http.Client{}
+
+	// 1. Generate 0-row Parquet file
+	schemaText := `message upload_zero_record {
+		required int64 user_id;
+		required binary username (STRING);
+		optional double balance;
+	}`
+	sd, err := parquetschema.ParseSchemaDefinition(schemaText)
+	if err != nil {
+		t.Fatalf("failed parsing schema: %v", err)
+	}
+
+	var pBuf bytes.Buffer
+	pBuf.WriteString("PAR1")
+	fw := goparquet.NewFileWriter(&pBuf, goparquet.WithSchemaDefinition(sd))
+	if err := fw.Close(); err != nil {
+		t.Fatalf("failed closing parquet writer: %v", err)
+	}
+	parquetBytes := pBuf.Bytes()
+
+	// 2. Perform multipart upload of 0-row Parquet
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "users_zero.parquet")
+	if err != nil {
+		t.Fatalf("failed creating form file: %v", err)
+	}
+	if _, err := part.Write(parquetBytes); err != nil {
+		t.Fatalf("failed writing parquet bytes to form: %v", err)
+	}
+	_ = writer.Close()
+
+	uploadReq, _ := http.NewRequest(http.MethodPost, baseURL+"/api/data/view", &body)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadReq.Header.Set("X-CSRF-Token", token)
+
+	uploadResp, err := client.Do(uploadReq)
+	if err != nil {
+		t.Fatalf("failed sending upload request: %v", err)
+	}
+	defer uploadResp.Body.Close()
+
+	if uploadResp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(uploadResp.Body)
+		t.Fatalf("expected 200 OK for 0-row parquet upload, got %d: %s", uploadResp.StatusCode, string(respBody))
+	}
+
+	rawJSON, err := io.ReadAll(uploadResp.Body)
+	if err != nil {
+		t.Fatalf("failed reading response body: %v", err)
+	}
+	jsonStr := string(rawJSON)
+
+	// Verify no null fields in JSON serialization
+	if strings.Contains(jsonStr, `"rows":null`) {
+		t.Errorf("rows should not be null in response: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"rows":[]`) {
+		t.Errorf("rows should serialize as []: %s", jsonStr)
+	}
+	if strings.Contains(jsonStr, `"columns":null`) {
+		t.Errorf("columns should not be null in response: %s", jsonStr)
+	}
+	if strings.Contains(jsonStr, `"selected_columns":null`) {
+		t.Errorf("selected_columns should not be null in response: %s", jsonStr)
+	}
+
+	var summary map[string]interface{}
+	if err := json.Unmarshal(rawJSON, &summary); err != nil {
+		t.Fatalf("failed decoding json response: %v", err)
+	}
+	if totalRows, ok := summary["total_rows"].(float64); !ok || totalRows != 0 {
+		t.Errorf("expected total_rows=0, got %v", summary["total_rows"])
+	}
+
+	// 3. Test in-memory session cache: column re-projection on uploaded file
+	reprojectReq, _ := http.NewRequest(http.MethodGet, baseURL+"/api/data/view?file=users_zero.parquet&cols=user_id", nil)
+	reprojectResp, err := client.Do(reprojectReq)
+	if err != nil {
+		t.Fatalf("failed requesting re-projection: %v", err)
+	}
+	defer reprojectResp.Body.Close()
+
+	if reprojectResp.StatusCode != http.StatusOK {
+		rpBody, _ := io.ReadAll(reprojectResp.Body)
+		t.Fatalf("expected 200 OK for cached re-projection, got %d: %s", reprojectResp.StatusCode, string(rpBody))
+	}
+
+	var rpSummary struct {
+		SelectedColumns []string `json:"selected_columns"`
+		TotalRows       int64    `json:"total_rows"`
+	}
+	if err := json.NewDecoder(reprojectResp.Body).Decode(&rpSummary); err != nil {
+		t.Fatalf("failed decoding reprojected response: %v", err)
+	}
+	if len(rpSummary.SelectedColumns) != 1 || rpSummary.SelectedColumns[0] != "user_id" {
+		t.Errorf("expected selected columns [user_id], got: %+v", rpSummary.SelectedColumns)
+	}
+
+	// 4. Test malformed multipart POST requests
+	// Case 4a: Missing 'file' part
+	var emptyBody bytes.Buffer
+	emptyWriter := multipart.NewWriter(&emptyBody)
+	_ = emptyWriter.WriteField("other", "value")
+	_ = emptyWriter.Close()
+
+	badReq, _ := http.NewRequest(http.MethodPost, baseURL+"/api/data/view", &emptyBody)
+	badReq.Header.Set("Content-Type", emptyWriter.FormDataContentType())
+	badReq.Header.Set("X-CSRF-Token", token)
+	badResp, err := client.Do(badReq)
+	if err != nil {
+		t.Fatalf("failed sending bad request: %v", err)
+	}
+	_ = badResp.Body.Close()
+	if badResp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for missing file field, got: %d", badResp.StatusCode)
+	}
+
+	// Case 4b: Malformed multipart payload
+	corruptReq, _ := http.NewRequest(http.MethodPost, baseURL+"/api/data/view", strings.NewReader("not a multipart body"))
+	corruptReq.Header.Set("Content-Type", "multipart/form-data; boundary=invalid_boundary")
+	corruptReq.Header.Set("X-CSRF-Token", token)
+	corruptResp, err := client.Do(corruptReq)
+	if err != nil {
+		t.Fatalf("failed sending corrupt request: %v", err)
+	}
+	_ = corruptResp.Body.Close()
+	if corruptResp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for corrupt multipart form, got: %d", corruptResp.StatusCode)
+	}
+
+	// Case 4c: Non-existent non-cached file request should return 404
+	missingReq, _ := http.NewRequest(http.MethodGet, baseURL+"/api/data/view?file=definitely_does_not_exist_xyz.parquet", nil)
+	missingResp, err := client.Do(missingReq)
+	if err != nil {
+		t.Fatalf("failed sending missing file request: %v", err)
+	}
+	_ = missingResp.Body.Close()
+	if missingResp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 Not Found for non-existent file, got: %d", missingResp.StatusCode)
+	}
 }
 

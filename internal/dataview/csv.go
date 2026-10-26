@@ -17,14 +17,34 @@ func ReadDelimitedData(data []byte, delimiter rune, opts InspectOptions) (*DataF
 	r := csv.NewReader(bytes.NewReader(data))
 	r.Comma = delimiter
 	r.LazyQuotes = true
-	r.FieldsPerRecord = -1 // Allow variable row fields
+	format := "csv"
+	if delimiter == '\t' {
+		format = "tsv"
+	}
+
+	allCols := make([]ColumnMeta, 0)
+	activeCols := make([]string, 0)
+	rows := make([]map[string]interface{}, 0)
 
 	headers, err := r.Read()
 	if err != nil {
+		if err == io.EOF {
+			return &DataFileSummary{
+				Format:          format,
+				TotalRows:       0,
+				TotalCols:       0,
+				FileSize:        int64(len(data)),
+				Columns:         allCols,
+				SelectedColumns: activeCols,
+				Rows:            rows,
+				Offset:          opts.Offset,
+				Limit:           opts.Limit,
+				HasMore:         false,
+			}, nil
+		}
 		return nil, fmt.Errorf("failed reading CSV headers: %w", err)
 	}
 
-	var allCols []ColumnMeta
 	for _, h := range headers {
 		cleanHeader := strings.TrimSpace(h)
 		if cleanHeader == "" {
@@ -42,7 +62,6 @@ func ReadDelimitedData(data []byte, delimiter rune, opts InspectOptions) (*DataF
 		colIdxMap[c.Name] = i
 	}
 
-	var activeCols []string
 	if len(opts.Columns) > 0 {
 		activeCols = opts.Columns
 	} else {
@@ -61,7 +80,6 @@ func ReadDelimitedData(data []byte, delimiter rune, opts InspectOptions) (*DataF
 	}
 
 	totalRows := int64(0)
-	var rows []map[string]interface{}
 	fLower := strings.ToLower(opts.Filter)
 
 	for {
@@ -104,11 +122,6 @@ func ReadDelimitedData(data []byte, delimiter rune, opts InspectOptions) (*DataF
 	}
 
 	hasMore := int64(offset+len(rows)) < totalRows
-
-	format := "csv"
-	if delimiter == '\t' {
-		format = "tsv"
-	}
 
 	return &DataFileSummary{
 		Format:          format,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 )
 
@@ -56,7 +57,113 @@ func InspectData(rawBytes []byte, filename string, opts InspectOptions) (*DataFi
 		summary.Format = format
 	}
 
+	// Ensure slices are non-nil so they serialize to [] instead of null in JSON
+	if summary.Columns == nil {
+		summary.Columns = make([]ColumnMeta, 0)
+	}
+	if summary.SelectedColumns == nil {
+		summary.SelectedColumns = make([]string, 0)
+	}
+	if summary.Rows == nil {
+		summary.Rows = make([]map[string]interface{}, 0)
+	}
+
 	return summary, nil
+}
+
+// NormalizeValue recursively converts byte slices to strings and normalizes nested structures
+func NormalizeValue(v interface{}) interface{} {
+	if v == nil {
+		return nil
+	}
+
+	switch val := v.(type) {
+	case []byte:
+		return string(val)
+	case string:
+		return val
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
+		return val
+	case map[string]interface{}:
+		res := make(map[string]interface{}, len(val))
+		for k, item := range val {
+			res[k] = NormalizeValue(item)
+		}
+		return res
+	case map[interface{}]interface{}:
+		res := make(map[string]interface{}, len(val))
+		for k, item := range val {
+			res[fmt.Sprintf("%v", k)] = NormalizeValue(item)
+		}
+		return res
+	case []interface{}:
+		res := make([]interface{}, len(val))
+		for i, item := range val {
+			res[i] = NormalizeValue(item)
+		}
+		return res
+	}
+
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		if rv.IsNil() {
+			return nil
+		}
+		return NormalizeValue(rv.Elem().Interface())
+	case reflect.Slice:
+		if rv.Type().Elem().Kind() == reflect.Uint8 {
+			return string(rv.Bytes())
+		}
+		res := make([]interface{}, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			res[i] = NormalizeValue(rv.Index(i).Interface())
+		}
+		return res
+	case reflect.Array:
+		if rv.Type().Elem().Kind() == reflect.Uint8 {
+			b := make([]byte, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				b[i] = byte(rv.Index(i).Uint())
+			}
+			return string(b)
+		}
+		res := make([]interface{}, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			res[i] = NormalizeValue(rv.Index(i).Interface())
+		}
+		return res
+	case reflect.Map:
+		res := make(map[string]interface{}, rv.Len())
+		for _, key := range rv.MapKeys() {
+			kStr := fmt.Sprintf("%v", key.Interface())
+			res[kStr] = NormalizeValue(rv.MapIndex(key).Interface())
+		}
+		return res
+	case reflect.Struct:
+		res := make(map[string]interface{})
+		typ := rv.Type()
+		for i := 0; i < rv.NumField(); i++ {
+			field := typ.Field(i)
+			if field.PkgPath != "" { // unexported field
+				continue
+			}
+			name := field.Name
+			if tag := field.Tag.Get("json"); tag != "" {
+				parts := strings.Split(tag, ",")
+				if parts[0] == "-" {
+					continue
+				}
+				if parts[0] != "" {
+					name = parts[0]
+				}
+			}
+			res[name] = NormalizeValue(rv.Field(i).Interface())
+		}
+		return res
+	default:
+		return v
+	}
 }
 
 // InspectFile opens a file on disk, automatically handling any compression layers
@@ -108,8 +215,28 @@ func ExportRows(summary *DataFileSummary, format string) ([]byte, error) {
 	for _, row := range summary.Rows {
 		var record []string
 		for _, h := range headers {
-			val := row[h]
-			record = append(record, fmt.Sprintf("%v", val))
+			val, exists := row[h]
+			if (!exists || val == nil) && strings.Contains(h, ".") {
+				parts := strings.Split(h, ".")
+				var cur interface{} = row
+				found := true
+				for _, p := range parts {
+					if m, ok := cur.(map[string]interface{}); ok {
+						cur = m[p]
+					} else {
+						found = false
+						break
+					}
+				}
+				if found && cur != nil {
+					val = cur
+				}
+			}
+			if val == nil {
+				record = append(record, "")
+			} else {
+				record = append(record, fmt.Sprintf("%v", val))
+			}
 		}
 		if err := w.Write(record); err != nil {
 			return nil, err
