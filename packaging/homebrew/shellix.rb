@@ -27,6 +27,7 @@ class Shellix < Formula
   def install
     bin.install "shellix"
     bin.install_symlink "shellix" => "sx"
+    bin.install_symlink "shellix" => "slx"
   end
 
   test do

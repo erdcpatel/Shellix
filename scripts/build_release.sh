@@ -36,11 +36,13 @@ for TARGET in "${TARGETS[@]}"; do
   echo "  🔨 Compiling ${OS}/${ARCH}..."
   CGO_ENABLED=0 GOOS="${OS}" GOARCH="${ARCH}" go build -ldflags="${LDFLAGS}" -o "${BUILD_DIR}/${BIN_NAME}" ./cmd/shellix
 
-  # Create alias sx symlink / copy
+  # Create alias sx and slx symlink / copy
   if [ "${OS}" = "windows" ]; then
     cp "${BUILD_DIR}/${BIN_NAME}" "${BUILD_DIR}/sx.exe"
+    cp "${BUILD_DIR}/${BIN_NAME}" "${BUILD_DIR}/slx.exe"
   else
     cp "${BUILD_DIR}/${BIN_NAME}" "${BUILD_DIR}/sx"
+    cp "${BUILD_DIR}/${BIN_NAME}" "${BUILD_DIR}/slx"
   fi
 
   # Copy documentation assets

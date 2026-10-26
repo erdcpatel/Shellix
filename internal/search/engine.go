@@ -112,40 +112,42 @@ func (e *Engine) Search(opts SearchOptions) (*SearchSummary, error) {
 		for _, root := range opts.Paths {
 			giPatterns := loadGitignorePatterns(root)
 
-			_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 				if err != nil {
 					return nil
 				}
-				name := info.Name()
-				rel, _ := filepath.Rel(root, path)
-				if rel == "." {
+				name := d.Name()
+				rel, err := filepath.Rel(root, path)
+				if err != nil || rel == "." {
 					return nil
 				}
 
-				topDir := extractTopLevelDir(rel)
+				// Cross-platform normalized relative path (consistent forward slashes)
+				normRel := filepath.ToSlash(rel)
+				topDir := extractTopLevelDir(normRel)
 				if topDir != "." {
 					dirsMu.Lock()
 					scannedDirs[topDir] = true
 					dirsMu.Unlock()
 				}
 
-				if info.IsDir() {
+				if d.IsDir() {
 					if defaultIgnoredDirs[name] {
 						return filepath.SkipDir
 					}
-					if len(giPatterns) > 0 && matchesAnyPattern(rel, name, giPatterns) {
+					if len(giPatterns) > 0 && matchesAnyPattern(normRel, name, giPatterns) {
 						return filepath.SkipDir
 					}
-					if len(opts.ExcludeGlobs) > 0 && matchesExclude(name, rel, opts.ExcludeGlobs) {
+					if len(opts.ExcludeGlobs) > 0 && matchesExclude(name, normRel, opts.ExcludeGlobs) {
 						return filepath.SkipDir
 					}
 					return nil
 				}
 
-				if len(giPatterns) > 0 && matchesAnyPattern(rel, name, giPatterns) {
+				if len(giPatterns) > 0 && matchesAnyPattern(normRel, name, giPatterns) {
 					return nil
 				}
-				if len(opts.ExcludeGlobs) > 0 && matchesExclude(name, rel, opts.ExcludeGlobs) {
+				if len(opts.ExcludeGlobs) > 0 && matchesExclude(name, normRel, opts.ExcludeGlobs) {
 					return nil
 				}
 
@@ -157,12 +159,14 @@ func (e *Engine) Search(opts SearchOptions) (*SearchSummary, error) {
 					}
 				}
 
-				if !info.Mode().IsRegular() || info.Size() > opts.MaxFileSize {
+				// Only fetch DirEntry Info when regular file passed all filter checks
+				info, err := d.Info()
+				if err != nil || !info.Mode().IsRegular() || info.Size() > opts.MaxFileSize {
 					return nil
 				}
 
 				filesChan <- fileSearchTask{
-					path:   path,
+					path:   filepath.ToSlash(filepath.Clean(path)),
 					topDir: topDir,
 				}
 				return nil
@@ -304,7 +308,7 @@ func (e *Engine) searchFile(path, topDir string, opts SearchOptions, matchFn fun
 			atomic.AddInt64(totalMatches, 1)
 
 			res := &MatchResult{
-				Path:        path,
+				Path:        filepath.ToSlash(path),
 				Directory:   topDir,
 				LineNumber:  lineNum,
 				LineContent: line,

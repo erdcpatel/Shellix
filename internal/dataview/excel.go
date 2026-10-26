@@ -10,6 +10,10 @@ import (
 
 // ReadExcelData parses an Excel spreadsheet (.xlsx) into tabular rows
 func ReadExcelData(data []byte, opts InspectOptions) (*DataFileSummary, error) {
+	if int64(len(data)) > MaxDecompressedBytes {
+		return nil, fmt.Errorf("excel data exceeds maximum allowed size (%d bytes)", MaxDecompressedBytes)
+	}
+
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed opening excel file: %w", err)

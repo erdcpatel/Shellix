@@ -11,6 +11,10 @@ import (
 
 // ReadParquetData parses a Parquet byte slice and returns structured metadata, schema, and rows
 func ReadParquetData(data []byte, opts InspectOptions) (*DataFileSummary, error) {
+	if int64(len(data)) > MaxDecompressedBytes {
+		return nil, fmt.Errorf("parquet data exceeds maximum allowed size (%d bytes)", MaxDecompressedBytes)
+	}
+
 	reader := bytes.NewReader(data)
 
 	var selectedCols []string

@@ -366,8 +366,8 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 
 	attempts := 1 + step.Retries
 	for attempt := 1; attempt <= attempts; attempt++ {
-		cmdStr := e.Context.Interpolate(step.Run)
-		workDir := e.Context.Interpolate(step.WorkingDir)
+		rawRun := normalizeScript(step.Run)
+		workDir := normalizeScript(e.Context.Interpolate(step.WorkingDir))
 
 		var ctx context.Context
 		var cancel context.CancelFunc
@@ -378,7 +378,12 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 			ctx, cancel = context.WithCancel(context.Background())
 		}
 
-		cmd := buildStepCommand(ctx, cmdStr)
+		cmd, cleanup, cmdErr := e.buildStepExecution(ctx, rawRun)
+		if cmdErr != nil {
+			cancel()
+			finalErr = cmdErr
+			break
+		}
 
 		if workDir != "" {
 			cmd.Dir = workDir
@@ -391,6 +396,7 @@ func (e *Executor) executeStep(step *Step, isParallel bool) ExecutionResult {
 		cmd.Stderr = &buf
 
 		err := cmd.Run()
+		cleanup()
 		if ctx.Err() == context.DeadlineExceeded {
 			err = fmt.Errorf("step '%s' timed out after %s", step.Name, step.TimeoutDur)
 		}
@@ -483,6 +489,16 @@ func buildSanitizedEnv(flowEnv, stepEnv map[string]string, ctx *Context) []strin
 	for k, v := range stepEnv {
 		safeEnv = append(safeEnv, fmt.Sprintf("%s=%s", k, ctx.Interpolate(v)))
 	}
+
+	// Export flow parameters into the step execution environment safely
+	ctx.mu.RLock()
+	for k, v := range ctx.Params {
+		cleanKey := strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(k, ".", "_"), "-", "_"))
+		safeEnv = append(safeEnv, fmt.Sprintf("PARAM_%s=%s", cleanKey, v))
+		safeEnv = append(safeEnv, fmt.Sprintf("SHELLIX_PARAM_%s=%s", cleanKey, v))
+	}
+	ctx.mu.RUnlock()
+
 	return safeEnv
 }
 
@@ -490,26 +506,209 @@ func isSensitiveHostEnv(key string) bool {
 	return core.IsSensitiveEnvKey(key)
 }
 
+func normalizeScript(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return s
+}
+
+// buildStepExecution builds an exec.Cmd using safe tokenization for parameter isolation,
+// CRLF line normalization, subshell parameter escaping, and reliable Windows batch execution for multiline scripts.
+func (e *Executor) buildStepExecution(ctx context.Context, rawRun string) (*exec.Cmd, func(), error) {
+	cleanRun := normalizeScript(rawRun)
+
+	// If the template itself does NOT contain shell operators:
+	// Use direct execution to guarantee safe parameter interpolation and avoid command injection!
+	if !hasShellOperators(cleanRun) {
+		rawTokens := splitCommandTokens(cleanRun)
+		if len(rawTokens) > 0 {
+			interpolatedTokens := make([]string, len(rawTokens))
+			for i, tok := range rawTokens {
+				interpolatedTokens[i] = e.Context.Interpolate(tok)
+			}
+			cmd := exec.CommandContext(ctx, interpolatedTokens[0], interpolatedTokens[1:]...)
+			return cmd, func() {}, nil
+		}
+	}
+
+	// Step template explicitly contains shell operators or multiline script.
+	// Use interpolateForSubshell to safely escape parameter placeholders.
+	cmdStr := e.interpolateForSubshell(cleanRun, runtime.GOOS == "windows")
+	cmdStr = normalizeScript(cmdStr)
+
+	if runtime.GOOS == "windows" {
+		// On Windows, cmd.exe /c cannot execute raw multiline strings.
+		// Write to a temporary .bat script for atomic, reliable batch execution.
+		if strings.Contains(cmdStr, "\n") {
+			tmpFile, err := os.CreateTemp("", "shellix-step-*.bat")
+			if err != nil {
+				return nil, func() {}, fmt.Errorf("failed creating temporary script: %w", err)
+			}
+			tmpPath := tmpFile.Name()
+			batContent := "@echo off\r\n" + strings.ReplaceAll(cmdStr, "\n", "\r\n") + "\r\n"
+			if _, err := tmpFile.WriteString(batContent); err != nil {
+				_ = tmpFile.Close()
+				_ = os.Remove(tmpPath)
+				return nil, func() {}, fmt.Errorf("failed writing temporary script: %w", err)
+			}
+			_ = tmpFile.Close()
+
+			cleanup := func() {
+				_ = os.Remove(tmpPath)
+			}
+			cmd := exec.CommandContext(ctx, "cmd.exe", "/c", tmpPath)
+			return cmd, cleanup, nil
+		}
+		return exec.CommandContext(ctx, "cmd.exe", "/c", cmdStr), func() {}, nil
+	}
+
+	return exec.CommandContext(ctx, "/bin/sh", "-c", cmdStr), func() {}, nil
+}
+
+// interpolateForSubshell interpolates template variables while safely escaping parameters
+// to prevent subshell command injection vulnerabilities.
+func (e *Executor) interpolateForSubshell(script string, isWindows bool) string {
+	if script == "" {
+		return ""
+	}
+
+	var sb strings.Builder
+	inSingle := false
+	inDouble := false
+
+	for i := 0; i < len(script); {
+		ch := script[i]
+
+		// Handle backslash escapes inside double quotes or outside quotes
+		if ch == '\\' && !inSingle && i+1 < len(script) {
+			sb.WriteByte(ch)
+			sb.WriteByte(script[i+1])
+			i += 2
+			continue
+		}
+
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			sb.WriteByte(ch)
+			i++
+			continue
+		}
+
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			sb.WriteByte(ch)
+			i++
+			continue
+		}
+
+		// Look for template placeholder opening {{
+		if ch == '{' && i+1 < len(script) && script[i+1] == '{' {
+			end := strings.Index(script[i+2:], "}}")
+			if end != -1 {
+				placeholder := script[i : i+2+end+2]
+				key := strings.TrimSpace(script[i+2 : i+2+end])
+
+				// If it's a dynamic parameter (params.KEY or param.KEY)
+				if strings.HasPrefix(key, "params.") || strings.HasPrefix(key, "param.") {
+					pKey := strings.TrimPrefix(key, "params.")
+					pKey = strings.TrimPrefix(pKey, "param.")
+
+					e.Context.mu.RLock()
+					val, ok := e.Context.Params[pKey]
+					e.Context.mu.RUnlock()
+
+					if ok {
+						escaped := escapeParamForShell(val, inDouble, inSingle, isWindows)
+						sb.WriteString(escaped)
+						i += len(placeholder)
+						continue
+					}
+				}
+
+				// Other variables (e.g. project_root, git.branch, env.VAR, steps.X.output)
+				val := e.Context.Interpolate(placeholder)
+				sb.WriteString(val)
+				i += len(placeholder)
+				continue
+			}
+		}
+
+		sb.WriteByte(ch)
+		i++
+	}
+
+	return sb.String()
+}
+
+func escapeParamForShell(val string, inDouble, inSingle, isWindows bool) string {
+	if isWindows {
+		escaped := strings.ReplaceAll(val, `"`, `""`)
+		escaped = strings.ReplaceAll(escaped, `%`, `%%`)
+		if inDouble {
+			return escaped
+		}
+		return `"` + escaped + `"`
+	}
+
+	// POSIX /bin/sh quoting rules
+	if inSingle {
+		return strings.ReplaceAll(val, `'`, `'\''`)
+	}
+
+	if inDouble {
+		r := strings.NewReplacer(
+			`\`, `\\`,
+			`"`, `\"`,
+			`$`, `\$`,
+			"`", "\\`",
+		)
+		return r.Replace(val)
+	}
+
+	// Outside quotes: wrap in single quotes (completely literal in POSIX)
+	return `'` + strings.ReplaceAll(val, `'`, `'\''`) + `'`
+}
+
 // buildStepCommand constructs an exec.Cmd using direct tokenization for safe commands,
 // falling back to subshell execution only when pipe/redirection operators are present.
 func buildStepCommand(ctx context.Context, cmdStr string) *exec.Cmd {
-	if !hasShellOperators(cmdStr) {
-		tokens := splitCommandTokens(cmdStr)
+	clean := normalizeScript(cmdStr)
+	if !hasShellOperators(clean) {
+		tokens := splitCommandTokens(clean)
 		if len(tokens) > 0 {
 			return exec.CommandContext(ctx, tokens[0], tokens[1:]...)
 		}
 	}
 	if runtime.GOOS == "windows" {
-		return exec.CommandContext(ctx, "cmd.exe", "/c", cmdStr)
+		return exec.CommandContext(ctx, "cmd.exe", "/c", clean)
 	}
-	return exec.CommandContext(ctx, "/bin/sh", "-c", cmdStr)
+	return exec.CommandContext(ctx, "/bin/sh", "-c", clean)
 }
 
 func hasShellOperators(cmdStr string) bool {
-	operators := []string{"|", "&&", "||", ";", ">", "<", "\n"}
-	for _, op := range operators {
-		if strings.Contains(cmdStr, op) {
-			return true
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(cmdStr); i++ {
+		ch := cmdStr[i]
+		if ch == '\\' && !inSingle && i+1 < len(cmdStr) {
+			i++
+			continue
+		}
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			continue
+		}
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			continue
+		}
+		if !inSingle && !inDouble {
+			if ch == '\n' || ch == '|' || ch == ';' || ch == '>' || ch == '<' {
+				return true
+			}
+			if ch == '&' && i+1 < len(cmdStr) && cmdStr[i+1] == '&' {
+				return true
+			}
 		}
 	}
 	return false
@@ -523,6 +722,11 @@ func splitCommandTokens(cmd string) []string {
 
 	for i := 0; i < len(cmd); i++ {
 		ch := cmd[i]
+		if ch == '\\' && !inSingle && i+1 < len(cmd) {
+			current.WriteByte(cmd[i+1])
+			i++
+			continue
+		}
 		switch ch {
 		case '\'':
 			if !inDouble {

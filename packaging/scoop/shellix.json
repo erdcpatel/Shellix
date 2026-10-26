@@ -18,6 +18,10 @@
     [
       "shellix.exe",
       "sx"
+    ],
+    [
+      "shellix.exe",
+      "slx"
     ]
   ],
   "checkver": "github",

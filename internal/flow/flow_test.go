@@ -548,4 +548,148 @@ steps:
 	}
 }
 
+func TestSafeParameterInterpolationCommandInjection(t *testing.T) {
+	// A flow where step.Run is a single command template with a parameter
+	yamlData := []byte(`
+name: safe-param-flow
+steps:
+  - name: print-val
+    run: echo "{{params.user_input}}"
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	// Malicious payload attempting command injection via semicolon
+	ctx.SetParam("user_input", "hello; echo INJECTED_EXECUTION")
+
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	out := results[0].Output
+	// The output must contain the literal semicolon argument, and not have been executed as a separate command
+	if !strings.Contains(out, "hello; echo INJECTED_EXECUTION") && !strings.Contains(out, "hello; echo") {
+		t.Errorf("expected literal string argument to be echoed safely, got: %q", out)
+	}
+}
+
+func TestMultilineScriptCRLFExecution(t *testing.T) {
+	// Multiline script with CRLF line endings
+	crlfScript := "echo line1\r\necho line2\r\n"
+	yamlData := []byte(fmt.Sprintf("name: crlf-flow\nsteps:\n  - name: multi\n    run: |\n      %s",
+		strings.ReplaceAll(crlfScript, "\r\n", "\r\n      ")))
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	if len(results) != 1 || !results[0].Success {
+		t.Fatalf("multiline step failed: %+v", results)
+	}
+
+	if !strings.Contains(results[0].Output, "line1") || !strings.Contains(results[0].Output, "line2") {
+		t.Errorf("unexpected output from multiline CRLF script: %q", results[0].Output)
+	}
+}
+
+func TestParameterValidation(t *testing.T) {
+	if err := ValidateParamKey("valid_key-1.name"); err != nil {
+		t.Errorf("expected valid key, got: %v", err)
+	}
+	if err := ValidateParamKey("invalid key with spaces"); err == nil {
+		t.Errorf("expected error for key with spaces")
+	}
+	if err := ValidateParamKey("key;inject"); err == nil {
+		t.Errorf("expected error for key with semicolon")
+	}
+	if err := ValidateParamValue("safe-value"); err != nil {
+		t.Errorf("expected valid value, got: %v", err)
+	}
+	if err := ValidateParamValue("danger\x00value"); err == nil {
+		t.Errorf("expected error for value with null byte")
+	}
+	// Value exceeding 64KB should be rejected
+	largeVal := strings.Repeat("A", 70000)
+	if err := ValidateParamValue(largeVal); err == nil {
+		t.Errorf("expected error for value exceeding 64KB")
+	}
+}
+
+func TestSafeSubshellParameterInterpolation(t *testing.T) {
+	// A flow step that explicitly uses subshell operators (| and &&)
+	yamlData := []byte(`
+name: safe-subshell-flow
+steps:
+  - name: piped-injection-attempt
+    run: echo "{{params.injected_quote}}" | cat
+  - name: unquoted-injection-attempt
+    run: echo {{params.injected_semicolon}} && true
+`)
+
+	f, err := Parse(yamlData)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	ctx := NewContext(".", "main")
+	// Payload 1: Attempt to break out of double quotes inside a subshell pipeline
+	ctx.SetParam("injected_quote", "legit\"; echo INJECTED_PIPELINE_PWN; echo \"")
+	// Payload 2: Semicolon injection in unquoted subshell parameter
+	ctx.SetParam("injected_semicolon", "legit_arg; echo INJECTED_CHAINED_PWN")
+
+	exec := NewExecutor(f, ctx)
+	exec.Silent = true
+	results, err := exec.Execute()
+	if err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	// Verify step 1 output: must NOT contain execution of injected command
+	out1 := results[0].Output
+	if strings.Contains(out1, "INJECTED_PIPELINE_PWN") {
+		// If it's executed, INJECTED_PIPELINE_PWN would appear on its own line
+		lines := strings.Split(out1, "\n")
+		for _, l := range lines {
+			if strings.TrimSpace(l) == "INJECTED_PIPELINE_PWN" {
+				t.Fatalf("CRITICAL SECURITY BUG: command injection succeeded in subshell pipeline! Output: %q", out1)
+			}
+		}
+	}
+
+	// Verify step 2 output: must NOT execute the chained command
+	out2 := results[1].Output
+	lines2 := strings.Split(out2, "\n")
+	for _, l := range lines2 {
+		if strings.TrimSpace(l) == "INJECTED_CHAINED_PWN" {
+			t.Fatalf("CRITICAL SECURITY BUG: command injection succeeded in chained subshell! Output: %q", out2)
+		}
+	}
+}
+
+
 

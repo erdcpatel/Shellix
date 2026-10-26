@@ -56,9 +56,22 @@
   // =========================================================================
   // API Client Helpers
   // =========================================================================
+  function getCSRFToken() {
+    const meta = document.querySelector('meta[name="shellix-csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+  }
+
   async function fetchJSON(url, options = {}) {
     try {
-      const res = await fetch(url, options);
+      const token = getCSRFToken();
+      const headers = {
+        ...(options.headers || {}),
+      };
+      if (token) {
+        headers['X-CSRF-Token'] = token;
+        headers['X-Shellix-Session'] = token;
+      }
+      const res = await fetch(url, { ...options, headers });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
@@ -1423,9 +1436,17 @@
     const formData = new FormData();
     formData.append('file', file);
 
+    const token = getCSRFToken();
+    const headers = {};
+    if (token) {
+      headers['X-CSRF-Token'] = token;
+      headers['X-Shellix-Session'] = token;
+    }
+
     try {
       const res = await fetch('/api/data/view?limit=100', {
         method: 'POST',
+        headers,
         body: formData,
       });
       if (!res.ok) throw new Error(await res.text());

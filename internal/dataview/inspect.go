@@ -12,6 +12,10 @@ import (
 
 // InspectData is the primary entry point to automatically decompress and parse any tabular data
 func InspectData(rawBytes []byte, filename string, opts InspectOptions) (*DataFileSummary, error) {
+	if int64(len(rawBytes)) > MaxDecompressedBytes {
+		return nil, fmt.Errorf("data size (%d bytes) exceeds safety limit of %d bytes", len(rawBytes), MaxDecompressedBytes)
+	}
+
 	decompressed, err := ReadAndDecompress(rawBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decompression error: %w", err)
@@ -57,6 +61,14 @@ func InspectData(rawBytes []byte, filename string, opts InspectOptions) (*DataFi
 
 // InspectFile opens a file on disk, automatically handling any compression layers
 func InspectFile(filePath string, opts InspectOptions) (*DataFileSummary, error) {
+	fi, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", filePath, err)
+	}
+	if fi.Size() > MaxDecompressedBytes {
+		return nil, fmt.Errorf("file size (%d bytes) exceeds safety limit of %d bytes", fi.Size(), MaxDecompressedBytes)
+	}
+
 	rawBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", filePath, err)

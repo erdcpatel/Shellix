@@ -171,3 +171,35 @@ func TestExcelInspection(t *testing.T) {
 		t.Errorf("expected 2 columns, got %d", len(summary.Columns))
 	}
 }
+
+func TestDecompressionBombProtection(t *testing.T) {
+	// Generate a 1 MB payload of zeroes, compressed with gzip (compresses to ~1 KB)
+	largePayload := make([]byte, 1024*1024)
+	var gzBuf bytes.Buffer
+	gw := gzip.NewWriter(&gzBuf)
+	_, err := gw.Write(largePayload)
+	if err != nil {
+		t.Fatalf("failed writing gzip: %v", err)
+	}
+	_ = gw.Close()
+
+	compressedData := gzBuf.Bytes()
+
+	// 1. With small limit (e.g. 50 KB), decompression should be rejected as a bomb
+	_, err = ReadAndDecompressWithLimit(compressedData, 50*1024)
+	if err == nil {
+		t.Fatalf("expected ErrDecompressionBomb, but decompression succeeded")
+	}
+	if err != ErrDecompressionBomb {
+		t.Errorf("expected ErrDecompressionBomb, got: %v", err)
+	}
+
+	// 2. With adequate limit (e.g. 2 MB), decompression should succeed
+	res, err := ReadAndDecompressWithLimit(compressedData, 2*1024*1024)
+	if err != nil {
+		t.Fatalf("expected successful decompression, got: %v", err)
+	}
+	if len(res.Data) != len(largePayload) {
+		t.Errorf("expected %d bytes, got %d", len(largePayload), len(res.Data))
+	}
+}

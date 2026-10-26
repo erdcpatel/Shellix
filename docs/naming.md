@@ -3,7 +3,7 @@
 ## 1. Nomenclature & Architecture
 - **Official Product Name**: **Shellix**
 - **Primary Binary Name**: `shellix`
-- **Ergonomic CLI Alias**: `sx` (also symlinked as `bin/sx`)
+- **Ergonomic CLI Aliases**: `sx` (also symlinked as `bin/sx`) and `slx` (symlinked as `bin/slx`)
 
 The name **Shellix** embodies the convergence of a persistent PTY Unix terminal shell with a modern developer workbench matrix (automation flows, Git indexing, JVM switching, and native OS credential management).
 
@@ -23,16 +23,16 @@ Before adopting the name, a systematic collision analysis across open-source pac
 
 ---
 
-## 3. Ergonomic Alias (`sx`) Analysis
+## 3. Ergonomic Aliases (`sx` and `slx`) Analysis
 
-The 2-character alias `sx` allows instant developer muscle memory (similar to `gh`, `rg`, `fd`, `jq`):
-- `sx g` -> Instant Git TUI dashboard
-- `sx flow run <name>` -> Execute automation workflow
-- `sx java ls` -> Multi-JDK version discovery
-- `sx search <query>` -> Parallel Git-aware code search
-- `sx doctor` -> Comprehensive environment health diagnostics
+The 2-character alias `sx` and 3-character alias `slx` allow instant developer muscle memory (similar to `gh`, `rg`, `fd`, `jq`):
+- `sx g` / `slx g` -> Instant Git TUI dashboard
+- `sx flow run <name>` / `slx flow run <name>` -> Execute automation workflow
+- `sx java ls` / `slx java ls` -> Multi-JDK version discovery
+- `sx search <query>` / `slx search <query>` -> Parallel Git-aware code search
+- `sx doctor` / `slx doctor` -> Comprehensive environment health diagnostics
 
-On POSIX platforms, `sx` is provided as a companion symlink alongside `shellix`. If a user already possesses a local alias for `sx`, the primary binary `shellix` operates identically without conflict.
+On POSIX platforms, both `sx` and `slx` are provided as companion symlinks alongside `shellix`. On Windows, binary shims and aliases are configured for both `sx.exe` and `slx.exe`. If a user already possesses a local alias for `sx`, the `slx` alias or the primary binary `shellix` operates identically without conflict.
 
 ---
 

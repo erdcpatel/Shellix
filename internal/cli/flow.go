@@ -71,7 +71,11 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			for _, p := range setParams {
 				parts := strings.SplitN(p, "=", 2)
 				if len(parts) == 2 {
-					ctx.SetParam(parts[0], parts[1])
+					if err := ctx.SetParamValidated(parts[0], parts[1]); err != nil {
+						return fmt.Errorf("invalid parameter --set %s: %w", p, err)
+					}
+				} else {
+					return fmt.Errorf("invalid parameter format --set %s, expected key=value", p)
 				}
 			}
 
@@ -166,7 +170,11 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			for _, p := range setParams {
 				parts := strings.SplitN(p, "=", 2)
 				if len(parts) == 2 {
-					ctx.SetParam(parts[0], parts[1])
+					if err := ctx.SetParamValidated(parts[0], parts[1]); err != nil {
+						return fmt.Errorf("invalid parameter --set %s: %w", p, err)
+					}
+				} else {
+					return fmt.Errorf("invalid parameter format --set %s, expected key=value", p)
 				}
 			}
 
@@ -215,7 +223,11 @@ func NewFlowCmd(app *AppContext) *cobra.Command {
 			for _, p := range setParams {
 				parts := strings.SplitN(p, "=", 2)
 				if len(parts) == 2 {
-					ctx.SetParam(parts[0], parts[1])
+					if err := ctx.SetParamValidated(parts[0], parts[1]); err != nil {
+						return fmt.Errorf("invalid parameter --set %s: %w", p, err)
+					}
+				} else {
+					return fmt.Errorf("invalid parameter format --set %s, expected key=value", p)
 				}
 			}
 

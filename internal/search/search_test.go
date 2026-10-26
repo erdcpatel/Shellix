@@ -295,3 +295,41 @@ func TestSearchReportsFormats(t *testing.T) {
 		t.Errorf("unexpected CSV header: %s", string(csvData))
 	}
 }
+
+func TestSearchWalkDirAndPathNormalization(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "shellix-search-norm-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	subDir := filepath.Join(tempDir, "pkg", "deep", "nested")
+	_ = os.MkdirAll(subDir, 0755)
+
+	targetFile := filepath.Join(subDir, "target.go")
+	_ = os.WriteFile(targetFile, []byte("package nested\n\nconst TargetConstant = 42\n"), 0644)
+
+	engine := NewEngine()
+	opts := SearchOptions{
+		Query: "TargetConstant",
+		Paths: []string{tempDir},
+	}
+
+	summary, err := engine.Search(opts)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+
+	if summary.TotalMatches != 1 {
+		t.Fatalf("expected 1 match, got %d", summary.TotalMatches)
+	}
+
+	match := summary.Matches[0]
+	// Verify forward slash normalization
+	if strings.Contains(match.Path, `\`) {
+		t.Errorf("expected normalized forward slashes in match path, got: %s", match.Path)
+	}
+	if match.Directory != "pkg" {
+		t.Errorf("expected top-level directory 'pkg', got '%s'", match.Directory)
+	}
+}

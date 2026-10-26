@@ -1,13 +1,17 @@
 package web
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,18 +35,20 @@ var embeddedAssets embed.FS
 
 // ServerConfig configures the embedded web server
 type ServerConfig struct {
-	Host      string
-	Port      int
-	Workspace string
-	GitEngine *git.Engine
+	Host         string
+	Port         int
+	Workspace    string
+	GitEngine    *git.Engine
+	SessionToken string
 }
 
 // Server provides the zero-latency embedded HTTP server
 type Server struct {
-	config     ServerConfig
-	listener   net.Listener
-	httpServer *http.Server
-	actualPort int
+	config       ServerConfig
+	listener     net.Listener
+	httpServer   *http.Server
+	actualPort   int
+	sessionToken string
 }
 
 // NewServer initializes a web server instance
@@ -56,9 +62,21 @@ func NewServer(cfg ServerConfig) *Server {
 	if cfg.Workspace == "" {
 		cfg.Workspace, _ = os.Getwd()
 	}
-	return &Server{
-		config: cfg,
+	token := cfg.SessionToken
+	if token == "" {
+		b := make([]byte, 32)
+		_, _ = rand.Read(b)
+		token = hex.EncodeToString(b)
 	}
+	return &Server{
+		config:       cfg,
+		sessionToken: token,
+	}
+}
+
+// SessionToken returns the active cryptographic session/CSRF token
+func (s *Server) SessionToken() string {
+	return s.sessionToken
 }
 
 // Start begins listening on an available port and serves requests
@@ -115,8 +133,31 @@ func (s *Server) Start() (int, error) {
 				return
 			}
 			defer data.Close()
+
+			content, readErr := io.ReadAll(data)
+			if readErr != nil {
+				http.Error(w, "failed reading index.html", http.StatusInternalServerError)
+				return
+			}
+
+			// Set session cookie
+			http.SetCookie(w, &http.Cookie{
+				Name:     "shellix_session",
+				Value:    s.sessionToken,
+				Path:     "/",
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			})
+
+			// Inject meta CSRF token tag into <head>
+			html := string(content)
+			metaTag := fmt.Sprintf(`<meta name="shellix-csrf-token" content="%s">`, s.sessionToken)
+			if strings.Contains(html, "<head>") {
+				html = strings.Replace(html, "<head>", "<head>\n  "+metaTag, 1)
+			}
+
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			http.ServeContent(w, r, "index.html", time.Now(), data.(interface{ Read([]byte) (int, error); Seek(int64, int) (int64, error) }))
+			_, _ = w.Write([]byte(html))
 			return
 		}
 		if strings.HasPrefix(path, "/assets/") {
@@ -126,7 +167,7 @@ func (s *Server) Start() (int, error) {
 	})
 
 	s.httpServer = &http.Server{
-		Handler:      mux,
+		Handler:      s.securityMiddleware(mux),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
@@ -862,8 +903,13 @@ func (s *Server) handleAPIDataView(w http.ResponseWriter, r *http.Request) {
 		file, handler, err := r.FormFile("file")
 		if err == nil {
 			defer file.Close()
-			fileBytes, err := io.ReadAll(file)
+			limited := io.LimitReader(file, dataview.MaxDecompressedBytes+1)
+			fileBytes, err := io.ReadAll(limited)
 			if err == nil {
+				if int64(len(fileBytes)) > dataview.MaxDecompressedBytes {
+					http.Error(w, fmt.Sprintf("uploaded file exceeds size limit (%d bytes)", dataview.MaxDecompressedBytes), http.StatusRequestEntityTooLarge)
+					return
+				}
 				summary, err := dataview.InspectData(fileBytes, handler.Filename, opts)
 				if err == nil {
 					writeJSON(w, summary)
@@ -907,3 +953,118 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(data)
 }
+
+func (s *Server) securityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Host Header Validation (anti-DNS Rebinding)
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if !isAllowedHost(host, s.config.Host) {
+			http.Error(w, "Forbidden: Invalid Host header (DNS rebinding protection)", http.StatusForbidden)
+			return
+		}
+
+		// 2. Origin Header Check (CORS / CSRF)
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			if origin == "null" {
+				http.Error(w, "Forbidden: 'null' Origin header rejected", http.StatusForbidden)
+				return
+			}
+			u, err := url.Parse(origin)
+			if err != nil || !isAllowedHost(u.Hostname(), s.config.Host) {
+				http.Error(w, "Forbidden: Invalid Origin header", http.StatusForbidden)
+				return
+			}
+			// If origin port is specified, verify it matches the bound port
+			if u.Port() != "" && s.actualPort > 0 && u.Port() != fmt.Sprintf("%d", s.actualPort) {
+				http.Error(w, "Forbidden: Origin port mismatch", http.StatusForbidden)
+				return
+			}
+		}
+
+		// 3. Sec-Fetch-Site Check
+		secFetchSite := r.Header.Get("Sec-Fetch-Site")
+		if strings.EqualFold(secFetchSite, "cross-site") {
+			http.Error(w, "Forbidden: Cross-site request rejected", http.StatusForbidden)
+			return
+		}
+
+		// 4. Referer Header Check on /api/ endpoints (when Origin is omitted by browser)
+		if strings.HasPrefix(r.URL.Path, "/api/") && origin == "" {
+			ref := r.Header.Get("Referer")
+			if ref != "" {
+				u, err := url.Parse(ref)
+				if err != nil || !isAllowedHost(u.Hostname(), s.config.Host) {
+					http.Error(w, "Forbidden: Cross-site Referer rejected", http.StatusForbidden)
+					return
+				}
+				if u.Port() != "" && s.actualPort > 0 && u.Port() != fmt.Sprintf("%d", s.actualPort) {
+					http.Error(w, "Forbidden: Referer port mismatch", http.StatusForbidden)
+					return
+				}
+			}
+		}
+
+		// 5. CSRF / Session Token Validation for state-modifying requests (POST, PUT, DELETE, PATCH)
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete || r.Method == http.MethodPatch {
+			if !s.validateRequestToken(r) {
+				http.Error(w, "Forbidden: Invalid or missing CSRF session token", http.StatusForbidden)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isAllowedHost(host, configHost string) bool {
+	clean := strings.ToLower(strings.TrimSpace(host))
+	if clean == "localhost" || clean == "127.0.0.1" || clean == "::1" || clean == "[::1]" {
+		return true
+	}
+	if configHost != "" && clean == strings.ToLower(configHost) {
+		return true
+	}
+	return false
+}
+
+func (s *Server) validateRequestToken(r *http.Request) bool {
+	// If a session cookie is present, it must match the active session token
+	if c, err := r.Cookie("shellix_session"); err == nil && c != nil {
+		if subtle.ConstantTimeCompare([]byte(c.Value), []byte(s.sessionToken)) != 1 {
+			return false
+		}
+	}
+
+	// For state-modifying operations, the request MUST provide the token in a custom header,
+	// Bearer authorization, or query param. Ambient cookies alone NEVER satisfy CSRF!
+
+	// 1. Check custom headers
+	for _, h := range []string{"X-CSRF-Token", "X-Shellix-Session"} {
+		if val := r.Header.Get(h); val != "" && subtle.ConstantTimeCompare([]byte(val), []byte(s.sessionToken)) == 1 {
+			return true
+		}
+	}
+
+	// 2. Check Authorization Bearer header
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.sessionToken)) == 1 {
+			return true
+		}
+	}
+
+	// 3. Check Query Parameter
+	if qToken := r.URL.Query().Get("token"); qToken != "" {
+		if subtle.ConstantTimeCompare([]byte(qToken), []byte(s.sessionToken)) == 1 {
+			return true
+		}
+	}
+
+	return false
+}
+

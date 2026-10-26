@@ -3,10 +3,21 @@ package dataview
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 )
+
+const (
+	// MaxDecompressedBytes caps the decompressed stream (256 MB) to prevent zip/gzip bomb OOM attacks
+	MaxDecompressedBytes = 256 * 1024 * 1024
+	// MaxDecompressLayers limits nested decompression recursion
+	MaxDecompressLayers = 5
+)
+
+// ErrDecompressionBomb is returned when decompressed data exceeds the safety limit
+var ErrDecompressionBomb = errors.New("decompression limit exceeded (potential decompression bomb)")
 
 // DecompressResult wraps the decompressed stream and detection metadata
 type DecompressResult struct {
@@ -15,8 +26,16 @@ type DecompressResult struct {
 	Format      string // "parquet", "csv", "tsv", "xlsx", "unknown"
 }
 
-// ReadAndDecompress reads a file or raw bytes and unwraps any nested gzip compression layers
+// ReadAndDecompress reads a file or raw bytes and unwraps any nested gzip compression layers up to MaxDecompressedBytes
 func ReadAndDecompress(data []byte) (*DecompressResult, error) {
+	return ReadAndDecompressWithLimit(data, MaxDecompressedBytes)
+}
+
+// ReadAndDecompressWithLimit reads a file or raw bytes and unwraps nested gzip compression with a custom byte limit
+func ReadAndDecompressWithLimit(data []byte, maxBytes int64) (*DecompressResult, error) {
+	if int64(len(data)) > maxBytes {
+		return nil, ErrDecompressionBomb
+	}
 	currentData := data
 	layers := 0
 
@@ -27,20 +46,25 @@ func ReadAndDecompress(data []byte) (*DecompressResult, error) {
 		}
 		// Gzip magic signature 0x1F 0x8B
 		if currentData[0] == 0x1F && currentData[1] == 0x8B {
+			if layers >= MaxDecompressLayers {
+				return nil, fmt.Errorf("exceeded maximum nested decompression layers (%d)", MaxDecompressLayers)
+			}
 			gzReader, err := gzip.NewReader(bytes.NewReader(currentData))
 			if err != nil {
 				break
 			}
-			uncompressed, err := io.ReadAll(gzReader)
+			// Use LimitReader to guard against decompression bombs
+			limited := io.LimitReader(gzReader, maxBytes+1)
+			uncompressed, err := io.ReadAll(limited)
 			_ = gzReader.Close()
 			if err != nil {
-				break
+				return nil, fmt.Errorf("decompression stream error: %w", err)
+			}
+			if int64(len(uncompressed)) > maxBytes {
+				return nil, ErrDecompressionBomb
 			}
 			currentData = uncompressed
 			layers++
-			if layers > 5 { // Guard against infinite gzip bombs
-				break
-			}
 		} else {
 			break
 		}

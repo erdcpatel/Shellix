@@ -14,8 +14,8 @@ import (
 	"golang.org/x/term"
 )
 
-// RunShell launches an interactive subshell inside a real PTY
-func RunShell(customShell string) error {
+// resolveUnixShell determines the appropriate shell path to launch
+func resolveUnixShell(customShell string) string {
 	shell := customShell
 	if shell == "" || shell == "auto" {
 		shell = os.Getenv("SHELL")
@@ -23,6 +23,12 @@ func RunShell(customShell string) error {
 			shell = "/bin/bash"
 		}
 	}
+	return shell
+}
+
+// RunShell launches an interactive subshell inside a real PTY
+func RunShell(customShell string) error {
+	shell := resolveUnixShell(customShell)
 
 	cmd := exec.Command(shell)
 

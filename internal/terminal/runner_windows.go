@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,9 +21,10 @@ const (
 	enableVirtualTerminalProcessing = 0x0004
 	enableProcessedOutput           = 0x0001
 	enableWrapAtEOLOutput           = 0x0002
+	enableVirtualTerminalInput      = 0x0200
 )
 
-// enableVTProcessing enables ANSI and 24-bit color sequence processing in Windows Console
+// enableVTProcessing enables ANSI and 24-bit color sequence processing in Windows Console Output
 func enableVTProcessing(h syscall.Handle) func() {
 	var mode uint32
 	r, _, _ := procGetConsoleMode.Call(uintptr(h), uintptr(unsafe.Pointer(&mode)))
@@ -30,6 +32,20 @@ func enableVTProcessing(h syscall.Handle) func() {
 		return func() {}
 	}
 	newMode := mode | enableVirtualTerminalProcessing | enableProcessedOutput | enableWrapAtEOLOutput
+	procSetConsoleMode.Call(uintptr(h), uintptr(newMode))
+	return func() {
+		procSetConsoleMode.Call(uintptr(h), uintptr(mode))
+	}
+}
+
+// enableVTInput enables Virtual Terminal Input on Windows Console Stdin (arrow keys, mouse, xterm keys)
+func enableVTInput(h syscall.Handle) func() {
+	var mode uint32
+	r, _, _ := procGetConsoleMode.Call(uintptr(h), uintptr(unsafe.Pointer(&mode)))
+	if r == 0 {
+		return func() {}
+	}
+	newMode := mode | enableVirtualTerminalInput
 	procSetConsoleMode.Call(uintptr(h), uintptr(newMode))
 	return func() {
 		procSetConsoleMode.Call(uintptr(h), uintptr(mode))
@@ -65,6 +81,8 @@ func RunShell(customShell string) error {
 	defer restoreOut()
 	restoreErr := enableVTProcessing(syscall.Handle(os.Stderr.Fd()))
 	defer restoreErr()
+	restoreIn := enableVTInput(syscall.Handle(os.Stdin.Fd()))
+	defer restoreIn()
 
 	cmd := exec.Command(shell)
 	cmd.Stdin = os.Stdin
@@ -72,6 +90,11 @@ func RunShell(customShell string) error {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			// Subshell exited cleanly with non-zero exit code (e.g. exit 1); reap gracefully
+			return nil
+		}
 		return fmt.Errorf("shell exited with error: %w", err)
 	}
 	return nil

@@ -10,6 +10,10 @@ import (
 
 // ReadDelimitedData parses CSV or TSV data with column filtering and pagination
 func ReadDelimitedData(data []byte, delimiter rune, opts InspectOptions) (*DataFileSummary, error) {
+	if int64(len(data)) > MaxDecompressedBytes {
+		return nil, fmt.Errorf("delimited data exceeds maximum allowed size (%d bytes)", MaxDecompressedBytes)
+	}
+
 	r := csv.NewReader(bytes.NewReader(data))
 	r.Comma = delimiter
 	r.LazyQuotes = true

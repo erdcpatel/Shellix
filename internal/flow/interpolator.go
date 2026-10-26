@@ -30,13 +30,60 @@ func NewContext(projectRoot, gitBranch string) *Context {
 	}
 }
 
-// SetParam registers a CLI or flow parameter override
+// ValidateParamKey verifies that a parameter key only contains safe alphanumeric, '.', '_', or '-' characters
+func ValidateParamKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("parameter key cannot be empty")
+	}
+	for i := 0; i < len(key); i++ {
+		ch := key[i]
+		if !(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z') && !(ch >= '0' && ch <= '9') && ch != '_' && ch != '-' && ch != '.' {
+			return fmt.Errorf("parameter key %q contains invalid characters (allowed: alphanumeric, '.', '_', '-')", key)
+		}
+	}
+	return nil
+}
+
+// ValidateParamValue verifies that a parameter value does not contain forbidden control sequences such as null bytes
+func ValidateParamValue(val string) error {
+	if strings.Contains(val, "\x00") {
+		return fmt.Errorf("parameter value contains illegal null byte")
+	}
+	if len(val) > 65536 {
+		return fmt.Errorf("parameter value exceeds maximum length of 64KB")
+	}
+	return nil
+}
+
+// SetParam registers a CLI or flow parameter override with validation
 func (ctx *Context) SetParam(key, val string) {
+	if err := ValidateParamKey(key); err != nil {
+		return
+	}
+	if err := ValidateParamValue(val); err != nil {
+		return
+	}
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
 	ctx.Params[key] = val
 	ctx.CustomVars["params."+key] = val
 	ctx.CustomVars["param."+key] = val
+}
+
+// SetParamValidated registers a parameter and returns an error if validation fails
+func (ctx *Context) SetParamValidated(key, val string) error {
+	if err := ValidateParamKey(key); err != nil {
+		return err
+	}
+	if err := ValidateParamValue(val); err != nil {
+		return err
+	}
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	ctx.Params[key] = val
+	ctx.CustomVars["params."+key] = val
+	ctx.CustomVars["param."+key] = val
+	return nil
 }
 
 // ApplyFlowDefaults initializes parameters declared in the flow if not already set by CLI

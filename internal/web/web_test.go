@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -201,3 +202,175 @@ index 1234..5678 100644
 		t.Errorf("expected hunk row in split rows")
 	}
 }
+
+func TestWebServerSecurityProtections(t *testing.T) {
+	cfg := ServerConfig{
+		Host:      "127.0.0.1",
+		Port:      9885,
+		Workspace: ".",
+	}
+
+	server := NewServer(cfg)
+	port, err := server.Start()
+	if err != nil {
+		t.Fatalf("failed starting server: %v", err)
+	}
+	defer func() { _ = server.Stop() }()
+
+	baseURL := server.URL()
+	token := server.SessionToken()
+	if token == "" {
+		t.Fatalf("expected non-empty session token")
+	}
+
+	// 1. Verify index.html contains injected CSRF meta tag and sets session cookie
+	resp, err := http.Get(baseURL + "/")
+	if err != nil {
+		t.Fatalf("failed requesting root: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), fmt.Sprintf(`name="shellix-csrf-token" content="%s"`, token)) {
+		t.Errorf("expected CSRF meta tag with token %s in index.html, got: %s", token, string(body)[:300])
+	}
+	foundCookie := false
+	for _, c := range resp.Cookies() {
+		if c.Name == "shellix_session" && c.Value == token {
+			foundCookie = true
+			break
+		}
+	}
+	if !foundCookie {
+		t.Errorf("expected shellix_session cookie in index.html response")
+	}
+
+	client := &http.Client{}
+
+	// 2. Reject Cross-Origin request with malicious Origin header
+	req, _ := http.NewRequest(http.MethodGet, baseURL+"/api/info", nil)
+	req.Header.Set("Origin", "https://malicious-site.com")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed sending request with malicious origin: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for malicious origin, got: %d", res.StatusCode)
+	}
+
+	// 3. Reject cross-site request via Sec-Fetch-Site
+	req, _ = http.NewRequest(http.MethodGet, baseURL+"/api/info", nil)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("failed sending request with Sec-Fetch-Site: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for cross-site Sec-Fetch-Site, got: %d", res.StatusCode)
+	}
+
+	// 4. Reject DNS Rebinding via Host header
+	req, _ = http.NewRequest(http.MethodGet, baseURL+"/api/info", nil)
+	req.Host = "evil.attacker.com"
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("failed sending request with spoofed host: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for spoofed host header, got: %d", res.StatusCode)
+	}
+
+	// 5. Reject state-modifying request without CSRF token
+	postReq, _ := http.NewRequest(http.MethodPost, baseURL+"/api/flow/run", strings.NewReader(`{"flow":"build"}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	res, err = client.Do(postReq)
+	if err != nil {
+		t.Fatalf("failed sending POST /api/flow/run: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for POST without CSRF token, got: %d", res.StatusCode)
+	}
+
+	// 6. Accept state-modifying request with valid X-CSRF-Token header
+	postReq, _ = http.NewRequest(http.MethodPost, baseURL+"/api/flow/run", strings.NewReader(`{"flow":"build"}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("X-CSRF-Token", token)
+	res, err = client.Do(postReq)
+	if err != nil {
+		t.Fatalf("failed sending POST with X-CSRF-Token: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK for POST with valid X-CSRF-Token, got: %d", res.StatusCode)
+	}
+
+	// 7. REJECT state-modifying request with ONLY the cookie (cookie alone is insufficient for CSRF protection)
+	postReq, _ = http.NewRequest(http.MethodPost, baseURL+"/api/flow/run", strings.NewReader(`{"flow":"build"}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.AddCookie(&http.Cookie{Name: "shellix_session", Value: token})
+	res, err = client.Do(postReq)
+	if err != nil {
+		t.Fatalf("failed sending POST with cookie: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for POST with only cookie, got: %d", res.StatusCode)
+	}
+
+	// 8. Accept state-modifying request with cookie AND valid X-CSRF-Token header
+	postReq, _ = http.NewRequest(http.MethodPost, baseURL+"/api/flow/run", strings.NewReader(`{"flow":"build"}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.AddCookie(&http.Cookie{Name: "shellix_session", Value: token})
+	postReq.Header.Set("X-CSRF-Token", token)
+	res, err = client.Do(postReq)
+	if err != nil {
+		t.Fatalf("failed sending POST with cookie and header: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK for POST with cookie and header, got: %d", res.StatusCode)
+	}
+
+	// 9. Accept state-modifying request with Bearer authorization header
+	postReq, _ = http.NewRequest(http.MethodPost, baseURL+"/api/flow/run", strings.NewReader(`{"flow":"build"}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("Authorization", "Bearer "+token)
+	res, err = client.Do(postReq)
+	if err != nil {
+		t.Fatalf("failed sending POST with Bearer auth: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK for POST with Bearer auth, got: %d", res.StatusCode)
+	}
+
+	// 10. Accept state-modifying request with query parameter
+	postReq, _ = http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/flow/run?token=%s", baseURL, token), strings.NewReader(`{"flow":"build"}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	res, err = client.Do(postReq)
+	if err != nil {
+		t.Fatalf("failed sending POST with token param: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK for POST with query token, got: %d", res.StatusCode)
+	}
+
+	// 11. Reject Origin: null (e.g. from sandboxed iframes)
+	req, _ = http.NewRequest(http.MethodGet, baseURL+"/api/info", nil)
+	req.Header.Set("Origin", "null")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("failed sending request with Origin null: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for Origin null, got: %d", res.StatusCode)
+	}
+
+	_ = port
+}
+

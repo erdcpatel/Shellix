@@ -196,8 +196,9 @@ cd /Users/dhavalpatel/workspace/shellix
 # Build the static binary
 make build
 
-# The binary is placed in bin/shellix with a symlink to bin/sx
+# The binary is placed in bin/shellix with companion symlinks to bin/sx and bin/slx
 ./bin/sx version
+./bin/slx version
 ```
 
 ### Quick Commands

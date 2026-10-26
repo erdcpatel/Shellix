@@ -11,9 +11,10 @@ import (
 // NewRootCmd assembles the root Shellix CLI router
 func NewRootCmd(app *AppContext) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "shellix",
-		Short: "Shellix — Blazing-fast developer terminal workbench",
-		Long:  core.Banner() + "\nA high-performance developer terminal workbench with instant Git engine, automation flows, and productivity tools.",
+		Use:     "shellix",
+		Aliases: []string{"sx", "slx"},
+		Short:   "Shellix — Blazing-fast developer terminal workbench",
+		Long:    core.Banner() + "\nA high-performance developer terminal workbench with instant Git engine, automation flows, and productivity tools.",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Print(core.Banner())
 			fmt.Println()
@@ -29,7 +30,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 			fmt.Println("  • sx doctor        Comprehensive system health & environment diagnostics")
 			fmt.Println("  • sx vault info    Inspect native OS Credential Manager")
 			fmt.Println("  • sx shell         Launch interactive subshell with VT processing")
-			fmt.Println("\nRun 'sx --help' for the complete command tree.")
+			fmt.Println("\nRun 'sx --help' (or 'slx --help') for the complete command tree.")
 		},
 	}
 
