@@ -112,6 +112,12 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <span class="nav-label">Search Explorer</span>
         </button>
+
+        <button class="nav-item" data-tab="httpdiff">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span class="nav-label">API & HTTP Diff</span>
+          <span class="nav-badge new-badge">Diff</span>
+        </button>
       </div>
 
       <div class="nav-section">
@@ -343,6 +349,109 @@
         </div>
         <div class="doctor-grid" id="doctorContainer">
           <!-- Dynamically populated diagnostics -->
+        </div>
+      </section>
+
+      <!-- 7. Visual HTTP & API Diff Inspector View -->
+      <section class="tab-pane" id="pane-httpdiff">
+        <div class="pane-header">
+          <div class="pane-header-title">
+            <h2>Visual HTTP & API Response Diff Inspector</h2>
+            <p class="pane-desc">Compare live REST endpoints or raw JSON payloads side-by-side with latency benchmarking and deep structural difference tracking.</p>
+          </div>
+          <div class="pane-header-actions">
+            <button class="btn btn-secondary" id="httpLoadSampleBtn">Load Sample Payloads</button>
+            <button class="btn btn-primary" id="httpRunDiffBtn">Compare Endpoints</button>
+          </div>
+        </div>
+
+        <div class="httpdiff-workbench">
+          <!-- Endpoint / Payload Inputs -->
+          <div class="httpdiff-inputs-card">
+            <div class="httpdiff-input-group">
+              <div class="httpdiff-label">
+                <span class="badge badge-success">ENDPOINT 1 / BASELINE</span>
+                <span class="httpdiff-label-desc">URL or Reference JSON</span>
+              </div>
+              <input type="text" class="input-text httpdiff-input" id="httpUrl1Input" placeholder="http://127.0.0.1:8080/api/v1/service (or JSON)">
+            </div>
+            <div class="httpdiff-vs-pill">VS</div>
+            <div class="httpdiff-input-group">
+              <div class="httpdiff-label">
+                <span class="badge badge-primary">ENDPOINT 2 / TARGET</span>
+                <span class="httpdiff-label-desc">URL or Comparison JSON</span>
+              </div>
+              <input type="text" class="input-text httpdiff-input" id="httpUrl2Input" placeholder="http://127.0.0.1:8080/api/v2/service (or JSON)">
+            </div>
+          </div>
+
+          <!-- Benchmark & Overview Bar -->
+          <div class="httpdiff-metrics-bar" id="httpdiffMetricsBar">
+            <div class="diff-metric-item">
+              <span class="diff-metric-label">STATUS MATCH</span>
+              <span class="diff-metric-val" id="diffStatusMatch">--</span>
+            </div>
+            <div class="diff-metric-divider"></div>
+            <div class="diff-metric-item">
+              <span class="diff-metric-label">LATENCY BENCHMARK</span>
+              <span class="diff-metric-val" id="diffLatencyComp">--</span>
+            </div>
+            <div class="diff-metric-divider"></div>
+            <div class="diff-metric-item">
+              <span class="diff-metric-label">STRUCTURAL MATCH</span>
+              <span class="diff-metric-val" id="diffMatchPct">--</span>
+            </div>
+            <div class="diff-metric-divider"></div>
+            <div class="diff-metric-item">
+              <span class="diff-metric-label">KEY DIFFERENCES</span>
+              <span class="diff-metric-val" id="diffKeyCounts">--</span>
+            </div>
+          </div>
+
+          <!-- Structural Badges & Split Diff Viewer -->
+          <div class="httpdiff-details-card" id="httpdiffDetailsCard">
+            <div class="httpdiff-details-header">
+              <div class="button-group">
+                <button class="seg-btn active" id="httpViewBadgesBtn">Structural Changes</button>
+                <button class="seg-btn" id="httpViewSplitBtn">Side-by-Side JSON Diff</button>
+              </div>
+            </div>
+
+            <!-- View A: Structural Badges -->
+            <div class="httpdiff-view-pane" id="httpViewBadgesPane">
+              <div class="diff-category-card" id="diffAddedCard">
+                <div class="diff-category-title added-title">➕ Added Keys in Target</div>
+                <div class="diff-keys-list" id="diffAddedList">
+                  <div class="empty-state-sm">No added keys detected.</div>
+                </div>
+              </div>
+
+              <div class="diff-category-card" id="diffRemovedCard">
+                <div class="diff-category-title removed-title">➖ Removed Keys from Baseline</div>
+                <div class="diff-keys-list" id="diffRemovedList">
+                  <div class="empty-state-sm">No removed keys detected.</div>
+                </div>
+              </div>
+
+              <div class="diff-category-card" id="diffChangedCard">
+                <div class="diff-category-title changed-title">🔄 Value Mismatches</div>
+                <div class="diff-keys-list" id="diffChangedList">
+                  <div class="empty-state-sm">No value mismatches detected.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- View B: Side-by-Side Split JSON Diff -->
+            <div class="httpdiff-view-pane" id="httpViewSplitPane" style="display:none;">
+              <div class="diff-viewer-table-wrapper">
+                <table class="split-diff-table" id="httpSplitDiffTable">
+                  <tbody id="httpSplitDiffBody">
+                    <!-- Split JSON diff lines -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>

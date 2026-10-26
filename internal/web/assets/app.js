@@ -42,6 +42,10 @@
       results: null,
       isSearching: false,
     },
+    httpdiff: {
+      results: null,
+      activeView: 'badges',
+    },
   };
 
   // =========================================================================
@@ -74,6 +78,7 @@
     initSearchView();
     initVaultView();
     initDoctorView();
+    initHTTPDiffView();
     initResourceMeter();
     initCommandPalette();
 
@@ -85,7 +90,7 @@
 
     // Check initial hash route
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['review', 'grid', 'flow', 'search', 'vault', 'doctor'].includes(hash)) {
+    if (hash && ['review', 'grid', 'flow', 'search', 'vault', 'doctor', 'httpdiff'].includes(hash)) {
       switchTab(hash);
     }
   });
@@ -177,6 +182,8 @@
       loadVaultData();
     } else if (tabId === 'doctor') {
       loadDoctorData();
+    } else if (tabId === 'httpdiff') {
+      if (!state.httpdiff.results) runHTTPDiff();
     }
   }
 
@@ -800,6 +807,8 @@
     { title: 'Switch to Search Explorer', tab: 'search', icon: '🔎' },
     { title: 'Switch to Environment Vault', tab: 'vault', icon: '🔐' },
     { title: 'Switch to System Diagnostics (Doctor)', tab: 'doctor', icon: '🩺' },
+    { title: 'Switch to API & HTTP Diff', tab: 'httpdiff', icon: '🌐' },
+    { title: 'Compare Sample APIs', action: () => document.getElementById('httpLoadSampleBtn')?.click(), icon: '⚡' },
     { title: 'Export Data Grid to CSV', action: () => document.getElementById('exportCsvBtn')?.click(), icon: '📥' },
     { title: 'Export Data Grid to JSON', action: () => document.getElementById('exportJsonBtn')?.click(), icon: '📄' },
     { title: 'Toggle Side-by-Side Diff', action: () => document.getElementById('diffModeSplitBtn')?.click(), icon: '⚡' },
@@ -1067,6 +1076,168 @@
       `;
       container.appendChild(card);
     });
+  }
+
+  // =========================================================================
+  // Module 7: Visual HTTP & API Response Diff Inspector
+  // =========================================================================
+  function initHTTPDiffView() {
+    const runBtn = document.getElementById('httpRunDiffBtn');
+    const loadSampleBtn = document.getElementById('httpLoadSampleBtn');
+    const viewBadgesBtn = document.getElementById('httpViewBadgesBtn');
+    const viewSplitBtn = document.getElementById('httpViewSplitBtn');
+    const url1Input = document.getElementById('httpUrl1Input');
+    const url2Input = document.getElementById('httpUrl2Input');
+
+    runBtn?.addEventListener('click', () => {
+      runHTTPDiff(url1Input?.value.trim(), url2Input?.value.trim());
+    });
+
+    loadSampleBtn?.addEventListener('click', () => {
+      if (url1Input) url1Input.value = 'http://api.internal/v1/service';
+      if (url2Input) url2Input.value = 'http://api.internal/v2/service';
+      runHTTPDiff('http://api.internal/v1/service', 'http://api.internal/v2/service');
+    });
+
+    viewBadgesBtn?.addEventListener('click', () => {
+      viewBadgesBtn.classList.add('active');
+      viewSplitBtn?.classList.remove('active');
+      const badgesPane = document.getElementById('httpViewBadgesPane');
+      const splitPane = document.getElementById('httpViewSplitPane');
+      if (badgesPane) badgesPane.style.display = 'flex';
+      if (splitPane) splitPane.style.display = 'none';
+      state.httpdiff.activeView = 'badges';
+    });
+
+    viewSplitBtn?.addEventListener('click', () => {
+      viewSplitBtn.classList.add('active');
+      viewBadgesBtn?.classList.remove('active');
+      const badgesPane = document.getElementById('httpViewBadgesPane');
+      const splitPane = document.getElementById('httpViewSplitPane');
+      if (badgesPane) badgesPane.style.display = 'none';
+      if (splitPane) splitPane.style.display = 'block';
+      state.httpdiff.activeView = 'split';
+    });
+
+    [url1Input, url2Input].forEach((input) => {
+      input?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') runBtn?.click();
+      });
+    });
+  }
+
+  async function runHTTPDiff(url1 = '', url2 = '') {
+    showToast('Comparing API endpoints...', 'info');
+    const query = url1 && url2 ? `?url1=${encodeURIComponent(url1)}&url2=${encodeURIComponent(url2)}` : '';
+    const data = await fetchJSON(`/api/http/diff${query}`);
+    if (!data) return;
+
+    state.httpdiff.results = data;
+    renderHTTPDiffResults(data);
+    showToast(`Diff computed: ${data.added_keys.length} added, ${data.removed_keys.length} removed, ${data.changed_values.length} changed`, 'info');
+  }
+
+  function renderHTTPDiffResults(data) {
+    const statusEl = document.getElementById('diffStatusMatch');
+    const latencyEl = document.getElementById('diffLatencyComp');
+    const matchPctEl = document.getElementById('diffMatchPct');
+    const keyCountsEl = document.getElementById('diffKeyCounts');
+
+    if (statusEl) {
+      statusEl.innerHTML = data.status_match
+        ? `<span style="color:#10b981;">✔ [${data.status1}] Match</span>`
+        : `<span style="color:#ef4444;">✖ [${data.status1}] vs [${data.status2}]</span>`;
+    }
+
+    if (latencyEl) {
+      latencyEl.textContent = `${data.latency1} vs ${data.latency2} (${data.latency_delta})`;
+    }
+
+    if (matchPctEl) {
+      matchPctEl.textContent = `${data.match_percentage.toFixed(1)}% Structural Match`;
+    }
+
+    if (keyCountsEl) {
+      keyCountsEl.innerHTML = `
+        <span style="color:#10b981;">+${data.added_keys.length}</span>
+        <span style="color:#ef4444;">-${data.removed_keys.length}</span>
+        <span style="color:#06b6d4;">~${data.changed_values.length}</span>
+      `;
+    }
+
+    // Render Added Keys
+    const addedList = document.getElementById('diffAddedList');
+    if (addedList) {
+      addedList.innerHTML = '';
+      if (!data.added_keys || data.added_keys.length === 0) {
+        addedList.innerHTML = `<div class="empty-state-sm">No added keys detected.</div>`;
+      } else {
+        data.added_keys.forEach((k) => {
+          const div = document.createElement('div');
+          div.className = 'diff-key-pill';
+          div.innerHTML = `<span style="color:#10b981;">+ ${escapeHTML(k)}</span><span class="badge badge-success">Added</span>`;
+          addedList.appendChild(div);
+        });
+      }
+    }
+
+    // Render Removed Keys
+    const removedList = document.getElementById('diffRemovedList');
+    if (removedList) {
+      removedList.innerHTML = '';
+      if (!data.removed_keys || data.removed_keys.length === 0) {
+        removedList.innerHTML = `<div class="empty-state-sm">No removed keys detected.</div>`;
+      } else {
+        data.removed_keys.forEach((k) => {
+          const div = document.createElement('div');
+          div.className = 'diff-key-pill';
+          div.innerHTML = `<span style="color:#ef4444;">- ${escapeHTML(k)}</span><span class="badge badge-danger">Removed</span>`;
+          removedList.appendChild(div);
+        });
+      }
+    }
+
+    // Render Changed Values
+    const changedList = document.getElementById('diffChangedList');
+    if (changedList) {
+      changedList.innerHTML = '';
+      if (!data.changed_values || data.changed_values.length === 0) {
+        changedList.innerHTML = `<div class="empty-state-sm">No value mismatches detected.</div>`;
+      } else {
+        data.changed_values.forEach((c) => {
+          const div = document.createElement('div');
+          div.className = 'diff-key-pill';
+          div.innerHTML = `
+            <span>
+              <strong style="color:var(--text-primary);">${escapeHTML(c.path)}:</strong>
+              <span style="color:#ef4444; text-decoration:line-through; margin:0 6px;">${escapeHTML(JSON.stringify(c.value1))}</span>
+              <span style="color:#10b981;">${escapeHTML(JSON.stringify(c.value2))}</span>
+            </span>
+            <span class="badge badge-primary">Modified</span>
+          `;
+          changedList.appendChild(div);
+        });
+      }
+    }
+
+    // Render Split JSON Diff Table
+    const splitBody = document.getElementById('httpSplitDiffBody');
+    if (splitBody && data.split_rows) {
+      splitBody.innerHTML = '';
+      data.split_rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        const leftCls = row.left_type === 'del' ? 'diff-line-del' : '';
+        const rightCls = row.right_type === 'add' ? 'diff-line-add' : '';
+
+        tr.innerHTML = `
+          <td class="diff-line-num ${leftCls}">${row.left_num || ''}</td>
+          <td class="diff-line-content ${leftCls}">${escapeHTML(row.left_content || '')}</td>
+          <td class="diff-line-num ${rightCls}">${row.right_num || ''}</td>
+          <td class="diff-line-content ${rightCls}">${escapeHTML(row.right_content || '')}</td>
+        `;
+        splitBody.appendChild(tr);
+      });
+    }
   }
 
   function escapeHTML(str) {

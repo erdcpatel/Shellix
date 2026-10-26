@@ -118,6 +118,29 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 	if doctorResp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 for /api/doctor, got %d", doctorResp.StatusCode)
 	}
+
+	// 8. Verify /api/http/diff
+	httpDiffResp, err := http.Get(baseURL + "/api/http/diff")
+	if err != nil {
+		t.Fatalf("failed requesting /api/http/diff: %v", err)
+	}
+	defer httpDiffResp.Body.Close()
+	if httpDiffResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /api/http/diff, got %d", httpDiffResp.StatusCode)
+	}
+
+	var diffData struct {
+		StatusMatch bool           `json:"status_match"`
+		AddedKeys   []string       `json:"added_keys"`
+		RemovedKeys []string       `json:"removed_keys"`
+		SplitRows   []SplitDiffRow `json:"split_rows"`
+	}
+	if err := json.NewDecoder(httpDiffResp.Body).Decode(&diffData); err != nil {
+		t.Fatalf("failed decoding /api/http/diff: %v", err)
+	}
+	if len(diffData.SplitRows) == 0 {
+		t.Errorf("expected split diff rows in /api/http/diff response")
+	}
 }
 
 func TestParseUnifiedDiff(t *testing.T) {
