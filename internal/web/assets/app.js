@@ -65,6 +65,7 @@
   // Initialization & Boot
   // =========================================================================
   document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     initNavigation();
     initShortcuts();
     initReviewView();
@@ -85,6 +86,45 @@
       switchTab(hash);
     }
   });
+
+  // =========================================================================
+  // Theme Engine (Light / Dark)
+  // =========================================================================
+  function initTheme() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryTheme = urlParams.get('theme');
+    const savedTheme = localStorage.getItem('shellix_theme');
+    let theme = queryTheme || savedTheme;
+    if (!theme) {
+      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    applyTheme(theme);
+
+    document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
+      const current = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      showToast(`Switched to ${next} theme`, 'info');
+    });
+  }
+
+  function applyTheme(theme) {
+    const sunIcon = document.getElementById('themeIconSun');
+    const moonIcon = document.getElementById('themeIconMoon');
+
+    if (theme === 'light') {
+      document.body.classList.remove('dark-theme');
+      document.body.classList.add('light-theme');
+      if (sunIcon) sunIcon.style.display = 'none';
+      if (moonIcon) moonIcon.style.display = 'block';
+    } else {
+      document.body.classList.remove('light-theme');
+      document.body.classList.add('dark-theme');
+      if (sunIcon) sunIcon.style.display = 'block';
+      if (moonIcon) moonIcon.style.display = 'none';
+    }
+    localStorage.setItem('shellix_theme', theme);
+  }
 
   // =========================================================================
   // Navigation & Tab Routing
@@ -682,6 +722,7 @@
   }
 
   const PALETTE_COMMANDS = [
+    { title: 'Toggle Light / Dark Theme', action: () => document.getElementById('themeToggleBtn')?.click(), icon: '🌓' },
     { title: 'Switch to Review & Diffs', tab: 'review', icon: '🔍' },
     { title: 'Switch to Data Grid & Tables', tab: 'grid', icon: '📊' },
     { title: 'Switch to Automation Flows', tab: 'flow', icon: '🌊' },
