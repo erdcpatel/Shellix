@@ -189,6 +189,15 @@
         <div class="grid-card">
           <div class="grid-toolbar">
             <div class="grid-stats" id="gridRecordStats">Showing 0 records (Cached in memory)</div>
+            <div class="grid-controls">
+              <div class="btn-group">
+                <button class="btn btn-sm btn-density" data-density="compact" title="Compact Row Height (32px)">Compact</button>
+                <button class="btn btn-sm btn-density active" data-density="default" title="Default Row Height (42px)">Default</button>
+                <button class="btn btn-sm btn-density" data-density="spacious" title="Comfortable Row Height (54px)">Spacious</button>
+              </div>
+              <button class="btn btn-sm" id="exportCsvBtn" title="Export current view to CSV">Export CSV</button>
+              <button class="btn btn-sm" id="exportJsonBtn" title="Export current view to JSON">Export JSON</button>
+            </div>
             <div class="grid-pagination">
               <button class="btn btn-sm" id="gridPrevPageBtn">Previous</button>
               <span id="gridPageIndicator">Page 1 of 1</span>
@@ -248,6 +257,7 @@
         <div class="search-workbench">
           <div class="search-bar-row">
             <input type="text" class="input-text search-main-input" id="searchQueryInput" placeholder="Search string or regex across folders (e.g. ValidateToken, orderProcessingTimeout)...">
+            <input type="text" class="input-text search-scope-input" id="searchScopeInput" placeholder="Scope (e.g. ., internal, cmd)" title="Directory path(s) to search within. Defaults to current workspace root (.)">
             <input type="text" class="input-text search-ext-input" id="searchExtInput" placeholder="Extensions (e.g. go,java)">
             <button class="btn btn-primary" id="executeSearchBtn">Search</button>
           </div>

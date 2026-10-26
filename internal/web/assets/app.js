@@ -72,6 +72,8 @@
     initGridView();
     initFlowView();
     initSearchView();
+    initVaultView();
+    initDoctorView();
     initCommandPalette();
 
     // Initial data hydration
@@ -170,6 +172,10 @@
     // Trigger tab specific refresh
     if (tabId === 'grid' && state.grid.cachedData.length === 0) {
       loadGridSampleData();
+    } else if (tabId === 'vault') {
+      loadVaultData();
+    } else if (tabId === 'doctor') {
+      loadDoctorData();
     }
   }
 
@@ -419,6 +425,67 @@
         renderGridRows();
       }
     });
+
+    // Row density toggler
+    document.querySelectorAll('.btn-density').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.btn-density').forEach((b) => b.classList.remove('active'));
+        e.target.classList.add('active');
+        const density = e.target.getAttribute('data-density');
+        const table = document.getElementById('dataTable');
+        if (table) {
+          table.classList.remove('density-compact', 'density-spacious');
+          if (density === 'compact') table.classList.add('density-compact');
+          if (density === 'spacious') table.classList.add('density-spacious');
+        }
+      });
+    });
+
+    // Grid export controls
+    document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
+      exportGridData('csv');
+    });
+    document.getElementById('exportJsonBtn')?.addEventListener('click', () => {
+      exportGridData('json');
+    });
+  }
+
+  function exportGridData(format) {
+    const data = state.grid.filteredData;
+    if (!data || data.length === 0) {
+      showToast('No records to export', 'warning');
+      return;
+    }
+
+    if (format === 'csv') {
+      const headers = Object.keys(data[0]);
+      const csvRows = [headers.join(',')];
+      data.forEach((row) => {
+        const values = headers.map((h) => {
+          const val = row[h] === undefined ? '' : String(row[h]);
+          return `"${val.replace(/"/g, '""')}"`;
+        });
+        csvRows.push(values.join(','));
+      });
+      downloadBlob(csvRows.join('\n'), 'shellix-data.csv', 'text/csv');
+      showToast(`Exported ${data.length} records to CSV`, 'info');
+    } else {
+      const jsonStr = JSON.stringify(data, null, 2);
+      downloadBlob(jsonStr, 'shellix-data.json', 'application/json');
+      showToast(`Exported ${data.length} records to JSON`, 'info');
+    }
+  }
+
+  function downloadBlob(content, filename, contentType) {
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   async function loadGridSampleData(force = false) {
@@ -635,14 +702,16 @@
 
   async function performSearch() {
     const q = document.getElementById('searchQueryInput')?.value.trim();
-    const ext = document.getElementById('searchExtInput')?.value.trim();
+    const scope = document.getElementById('searchScopeInput')?.value.trim() || '';
+    const ext = document.getElementById('searchExtInput')?.value.trim() || '';
     if (!q) {
       showToast('Please enter a search query', 'warning');
       return;
     }
 
-    showToast(`Searching for "${q}" across workspace...`, 'info');
-    const url = `/api/search?q=${encodeURIComponent(q)}&ext=${encodeURIComponent(ext)}&by_dir=true`;
+    const scopeDesc = scope ? `in ${scope}` : 'across workspace';
+    showToast(`Searching for "${q}" ${scopeDesc}...`, 'info');
+    const url = `/api/search?q=${encodeURIComponent(q)}&scope=${encodeURIComponent(scope)}&ext=${encodeURIComponent(ext)}&by_dir=true`;
     const data = await fetchJSON(url);
     if (!data) return;
 
@@ -728,6 +797,9 @@
     { title: 'Switch to Automation Flows', tab: 'flow', icon: '🌊' },
     { title: 'Switch to Search Explorer', tab: 'search', icon: '🔎' },
     { title: 'Switch to Environment Vault', tab: 'vault', icon: '🔐' },
+    { title: 'Switch to System Diagnostics (Doctor)', tab: 'doctor', icon: '🩺' },
+    { title: 'Export Data Grid to CSV', action: () => document.getElementById('exportCsvBtn')?.click(), icon: '📥' },
+    { title: 'Export Data Grid to JSON', action: () => document.getElementById('exportJsonBtn')?.click(), icon: '📄' },
     { title: 'Toggle Side-by-Side Diff', action: () => document.getElementById('diffModeSplitBtn')?.click(), icon: '⚡' },
     { title: 'Refresh Workspace State', action: () => document.getElementById('refreshBtn')?.click(), icon: '🔄' },
   ];
@@ -813,6 +885,140 @@
       toast.style.transition = 'all 0.2s ease';
       setTimeout(() => toast.remove(), 200);
     }, 3000);
+  }
+
+  // =========================================================================
+  // Module 5: Environment Vault (.env.vault)
+  // =========================================================================
+  function initVaultView() {
+    const envSelect = document.getElementById('vaultEnvSelect');
+    envSelect?.addEventListener('change', (e) => {
+      loadVaultData(e.target.value);
+    });
+  }
+
+  async function loadVaultData(env = 'default') {
+    const data = await fetchJSON(`/api/vault?env=${encodeURIComponent(env)}`);
+    if (!data) return;
+
+    const envSelect = document.getElementById('vaultEnvSelect');
+    if (envSelect && data.environments) {
+      envSelect.innerHTML = '';
+      data.environments.forEach((envName) => {
+        const opt = document.createElement('option');
+        opt.value = envName;
+        opt.textContent = `Environment: ${envName}`;
+        if (envName === data.current_env) opt.selected = true;
+        envSelect.appendChild(opt);
+      });
+    }
+
+    const tbody = document.getElementById('vaultTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!data.variables || data.variables.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="3" class="empty-state-sm">No environment variables registered for this profile.</td></tr>`;
+      return;
+    }
+
+    data.variables.forEach((v) => {
+      const tr = document.createElement('tr');
+      const isSecret = v.is_secret;
+      const maskedVal = escapeHTML(v.masked || v.value || '••••••••');
+      tr.innerHTML = `
+        <td style="font-weight: 600; color: var(--accent);">${escapeHTML(v.key)}</td>
+        <td class="secret-cell" data-masked="${maskedVal}" data-raw="${escapeHTML(v.value || maskedVal)}">
+          <code>${maskedVal}</code>
+        </td>
+        <td>
+          <button class="btn btn-sm btn-reveal-secret" ${!isSecret ? 'disabled' : ''}>
+            ${isSecret ? 'Reveal' : 'Plain'}
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll('.btn-reveal-secret').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const row = e.target.closest('tr');
+        const cell = row?.querySelector('.secret-cell');
+        const code = cell?.querySelector('code');
+        if (!cell || !code) return;
+        if (btn.textContent.trim() === 'Reveal') {
+          code.textContent = cell.getAttribute('data-raw');
+          code.style.color = 'var(--text-primary)';
+          btn.textContent = 'Hide';
+        } else {
+          code.textContent = cell.getAttribute('data-masked');
+          code.style.color = '';
+          btn.textContent = 'Reveal';
+        }
+      });
+    });
+  }
+
+  // =========================================================================
+  // Module 6: System Health & Diagnostics (Doctor)
+  // =========================================================================
+  function initDoctorView() {
+    // Initialized on tab switch
+  }
+
+  async function loadDoctorData() {
+    const data = await fetchJSON('/api/doctor');
+    if (!data) return;
+
+    const container = document.getElementById('doctorContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    // Group checks by category
+    const categories = {};
+    (data.checks || []).forEach((c) => {
+      if (!categories[c.category]) categories[c.category] = [];
+      categories[c.category].push(c);
+    });
+
+    Object.entries(categories).forEach(([category, checks]) => {
+      const card = document.createElement('div');
+      card.className = 'doctor-card';
+
+      let checksHTML = '';
+      checks.forEach((c) => {
+        let badgeClass = 'status-badge-pass';
+        let icon = '✔';
+        if (c.status === 'warn') {
+          badgeClass = 'status-badge-warn';
+          icon = '▲';
+        } else if (c.status === 'fail') {
+          badgeClass = 'status-badge-fail';
+          icon = '✖';
+        }
+
+        checksHTML += `
+          <div class="doctor-check-row">
+            <span class="doctor-check-name">
+              <span class="${badgeClass}">${icon}</span>
+              ${escapeHTML(c.name)}
+            </span>
+            <span class="doctor-check-detail" title="${escapeHTML(c.detail)}">
+              ${escapeHTML(c.detail)}
+            </span>
+          </div>
+        `;
+      });
+
+      card.innerHTML = `
+        <div class="doctor-card-title">
+          <span>${escapeHTML(category)}</span>
+          <span class="badge badge-success">${checks.length} verified</span>
+        </div>
+        ${checksHTML}
+      `;
+      container.appendChild(card);
+    });
   }
 
   function escapeHTML(str) {

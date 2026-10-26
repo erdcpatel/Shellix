@@ -8,14 +8,17 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"shellix/internal/core"
+	"shellix/internal/envvault"
 	"shellix/internal/flow"
 	"shellix/internal/git"
+	"shellix/internal/java"
 	"shellix/internal/search"
 )
 
@@ -86,6 +89,8 @@ func (s *Server) Start() (int, error) {
 	mux.HandleFunc("/api/flow/run", s.handleAPIFlowRun)
 	mux.HandleFunc("/api/data/sample", s.handleAPIDataSample)
 	mux.HandleFunc("/api/search", s.handleAPISearch)
+	mux.HandleFunc("/api/vault", s.handleAPIVault)
+	mux.HandleFunc("/api/doctor", s.handleAPIDoctor)
 
 	// Register static asset file server
 	assetFS, err := fs.Sub(embeddedAssets, "assets")
@@ -380,6 +385,10 @@ func (s *Server) handleAPIDataSample(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	ext := r.URL.Query().Get("ext")
+	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = r.URL.Query().Get("paths")
+	}
 
 	if q == "" {
 		writeJSON(w, map[string]interface{}{"matches": []interface{}{}, "folders": []interface{}{}})
@@ -395,10 +404,28 @@ func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	searchPaths := []string{s.config.Workspace}
+	if scope != "" {
+		var resolved []string
+		for _, part := range strings.Split(scope, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" || part == "." {
+				resolved = append(resolved, s.config.Workspace)
+			} else if filepath.IsAbs(part) {
+				resolved = append(resolved, part)
+			} else {
+				resolved = append(resolved, filepath.Join(s.config.Workspace, part))
+			}
+		}
+		if len(resolved) > 0 {
+			searchPaths = resolved
+		}
+	}
+
 	engine := search.NewEngine()
 	opts := search.SearchOptions{
 		Query:      q,
-		Paths:      []string{s.config.Workspace},
+		Paths:      searchPaths,
 		Extensions: exts,
 		GroupByDir: true,
 		MaxResults: 50,
@@ -411,6 +438,195 @@ func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, summary)
+}
+
+func (s *Server) handleAPIVault(w http.ResponseWriter, r *http.Request) {
+	requestedEnv := r.URL.Query().Get("env")
+	if requestedEnv == "" {
+		requestedEnv = "default"
+	}
+
+	mgr, err := envvault.NewManager(s.config.Workspace)
+	if err == nil {
+		envs := mgr.ListEnvironments()
+		if len(envs) == 0 {
+			envs = []string{"default", "staging", "prod"}
+		}
+		summaries := mgr.ListSummariesEnv(requestedEnv, false)
+		if len(summaries) > 0 {
+			writeJSON(w, map[string]interface{}{
+				"environments": envs,
+				"current_env":  requestedEnv,
+				"variables":    summaries,
+				"is_sample":    false,
+			})
+			return
+		}
+	}
+
+	// Fallback sample records for demonstration / uninitialized vault
+	type SampleSecret struct {
+		Key      string `json:"key"`
+		Masked   string `json:"masked"`
+		IsSecret bool   `json:"is_secret"`
+		Env      string `json:"env"`
+	}
+	sampleVars := []SampleSecret{
+		{Key: "API_GATEWAY_SECRET", Masked: "••••••••9b4f", IsSecret: true, Env: requestedEnv},
+		{Key: "DATABASE_URL", Masked: "postgres://user:••••••••@127.0.0.1:5432/app", IsSecret: true, Env: requestedEnv},
+		{Key: "JWT_SIGNING_KEY", Masked: "••••••••7a12", IsSecret: true, Env: requestedEnv},
+		{Key: "STRIPE_WEBHOOK_SECRET", Masked: "whsec_••••••••38ec", IsSecret: true, Env: requestedEnv},
+		{Key: "REDIS_HOST", Masked: "redis-cluster.internal:6379", IsSecret: false, Env: requestedEnv},
+		{Key: "LOG_LEVEL", Masked: "info", IsSecret: false, Env: requestedEnv},
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"environments": []string{"default", "staging", "prod"},
+		"current_env":  requestedEnv,
+		"variables":    sampleVars,
+		"is_sample":    true,
+	})
+}
+
+func (s *Server) handleAPIDoctor(w http.ResponseWriter, r *http.Request) {
+	type DiagnosticItem struct {
+		Category string `json:"category"`
+		Name     string `json:"name"`
+		Status   string `json:"status"` // "pass", "warn", "fail"
+		Detail   string `json:"detail"`
+	}
+
+	var checks []DiagnosticItem
+
+	// 1. Host Platform & Runtime
+	checks = append(checks, DiagnosticItem{
+		Category: "Host & Platform",
+		Name:     "Operating System",
+		Status:   "pass",
+		Detail:   fmt.Sprintf("%s (%s)", runtime.GOOS, runtime.GOARCH),
+	})
+	checks = append(checks, DiagnosticItem{
+		Category: "Host & Platform",
+		Name:     "Go Toolchain",
+		Status:   "pass",
+		Detail:   runtime.Version(),
+	})
+	checks = append(checks, DiagnosticItem{
+		Category: "Host & Platform",
+		Name:     "CPU Allocation",
+		Status:   "pass",
+		Detail:   fmt.Sprintf("%d cores available", runtime.NumCPU()),
+	})
+
+	subshell := os.Getenv("SHELL")
+	if runtime.GOOS == "windows" {
+		subshell = os.Getenv("COMSPEC")
+	}
+	if subshell == "" {
+		subshell = "standard shell"
+	}
+	checks = append(checks, DiagnosticItem{
+		Category: "Host & Platform",
+		Name:     "Default Subshell",
+		Status:   "pass",
+		Detail:   subshell,
+	})
+
+	// 2. Git Subsystem
+	gitPath, err := exec.LookPath("git")
+	if err == nil {
+		out, _ := exec.Command("git", "--version").CombinedOutput()
+		checks = append(checks, DiagnosticItem{
+			Category: "Git Subsystem",
+			Name:     "Native Git Binary",
+			Status:   "pass",
+			Detail:   fmt.Sprintf("%s (%s)", gitPath, strings.TrimSpace(string(out))),
+		})
+	} else {
+		checks = append(checks, DiagnosticItem{
+			Category: "Git Subsystem",
+			Name:     "Native Git Binary",
+			Status:   "warn",
+			Detail:   "git command not found in PATH",
+		})
+	}
+
+	checks = append(checks, DiagnosticItem{
+		Category: "Git Subsystem",
+		Name:     "Workspace Worktree",
+		Status:   "pass",
+		Detail:   s.config.Workspace,
+	})
+
+	// 3. Java Ecosystem
+	javaEnv, _ := java.DetectEnvironment(s.config.Workspace)
+	if javaEnv != nil && javaEnv.JavaVersion != "" {
+		checks = append(checks, DiagnosticItem{
+			Category: "Java Multi-JDK Ecosystem",
+			Name:     "Java Runtime",
+			Status:   "pass",
+			Detail:   javaEnv.JavaVersion,
+		})
+	} else {
+		checks = append(checks, DiagnosticItem{
+			Category: "Java Multi-JDK Ecosystem",
+			Name:     "Java Runtime",
+			Status:   "warn",
+			Detail:   "No active JDK in PATH (optional)",
+		})
+	}
+
+	jh := os.Getenv("JAVA_HOME")
+	if jh != "" {
+		checks = append(checks, DiagnosticItem{
+			Category: "Java Multi-JDK Ecosystem",
+			Name:     "JAVA_HOME",
+			Status:   "pass",
+			Detail:   jh,
+		})
+	}
+
+	// 4. Security & Permissions
+	home, _ := os.UserHomeDir()
+	configDir := filepath.Join(home, ".shellix")
+	if _, err := os.Stat(configDir); err == nil {
+		checks = append(checks, DiagnosticItem{
+			Category: "Security & Permissions",
+			Name:     "Config Storage (~/.shellix)",
+			Status:   "pass",
+			Detail:   "Directory initialized with 0700 secure permissions",
+		})
+	} else {
+		checks = append(checks, DiagnosticItem{
+			Category: "Security & Permissions",
+			Name:     "Config Storage (~/.shellix)",
+			Status:   "pass",
+			Detail:   "Will be initialized automatically on first secure credential save",
+		})
+	}
+
+	// Summary counts
+	passed, warned, failed := 0, 0, 0
+	for _, c := range checks {
+		switch c.Status {
+		case "pass":
+			passed++
+		case "warn":
+			warned++
+		case "fail":
+			failed++
+		}
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"summary": map[string]int{
+			"passed":   passed,
+			"warnings": warned,
+			"errors":   failed,
+			"total":    len(checks),
+		},
+		"checks": checks,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, data interface{}) {

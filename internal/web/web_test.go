@@ -88,6 +88,36 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 	if flowsResp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 for /api/flows, got %d", flowsResp.StatusCode)
 	}
+
+	// 5. Verify /api/search with scope parameter
+	searchResp, err := http.Get(baseURL + "/api/search?q=type&scope=internal&ext=go")
+	if err != nil {
+		t.Fatalf("failed requesting /api/search: %v", err)
+	}
+	defer searchResp.Body.Close()
+	if searchResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /api/search, got %d", searchResp.StatusCode)
+	}
+
+	// 6. Verify /api/vault
+	vaultResp, err := http.Get(baseURL + "/api/vault?env=default")
+	if err != nil {
+		t.Fatalf("failed requesting /api/vault: %v", err)
+	}
+	defer vaultResp.Body.Close()
+	if vaultResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /api/vault, got %d", vaultResp.StatusCode)
+	}
+
+	// 7. Verify /api/doctor
+	doctorResp, err := http.Get(baseURL + "/api/doctor")
+	if err != nil {
+		t.Fatalf("failed requesting /api/doctor: %v", err)
+	}
+	defer doctorResp.Body.Close()
+	if doctorResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /api/doctor, got %d", doctorResp.StatusCode)
+	}
 }
 
 func TestParseUnifiedDiff(t *testing.T) {
