@@ -66,23 +66,14 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 		t.Errorf("/api/info missing workspace_name: %+v", info)
 	}
 
-	// 3. Verify /api/data/sample for grid caching
-	dataResp, err := http.Get(baseURL + "/api/data/sample")
+	// 3. Verify removed legacy /api/data/sample endpoint returns 404 Not Found
+	legacyResp, err := http.Get(baseURL + "/api/data/sample")
 	if err != nil {
 		t.Fatalf("failed requesting /api/data/sample: %v", err)
 	}
-	defer dataResp.Body.Close()
-
-	var sampleData struct {
-		Records []map[string]interface{} `json:"records"`
-		Cached  bool                     `json:"cached"`
-		Count   int                      `json:"count"`
-	}
-	if err := json.NewDecoder(dataResp.Body).Decode(&sampleData); err != nil {
-		t.Fatalf("failed decoding /api/data/sample: %v", err)
-	}
-	if len(sampleData.Records) == 0 || !sampleData.Cached {
-		t.Errorf("unexpected sample records: %+v", sampleData)
+	defer legacyResp.Body.Close()
+	if legacyResp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 for removed /api/data/sample, got %d", legacyResp.StatusCode)
 	}
 
 	// 4. Verify /api/flows
@@ -95,7 +86,7 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 		t.Errorf("expected 200 for /api/flows, got %d", flowsResp.StatusCode)
 	}
 
-	// 5. Verify /api/search with scope parameter
+	// 4. Verify /api/search with scope parameter
 	searchResp, err := http.Get(baseURL + "/api/search?q=type&scope=internal&ext=go")
 	if err != nil {
 		t.Fatalf("failed requesting /api/search: %v", err)
@@ -105,7 +96,7 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 		t.Errorf("expected 200 for /api/search, got %d", searchResp.StatusCode)
 	}
 
-	// 6. Verify /api/vault
+	// 5. Verify /api/vault
 	vaultResp, err := http.Get(baseURL + "/api/vault?env=default")
 	if err != nil {
 		t.Fatalf("failed requesting /api/vault: %v", err)
@@ -115,7 +106,7 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 		t.Errorf("expected 200 for /api/vault, got %d", vaultResp.StatusCode)
 	}
 
-	// 7. Verify /api/doctor
+	// 6. Verify /api/doctor
 	doctorResp, err := http.Get(baseURL + "/api/doctor")
 	if err != nil {
 		t.Fatalf("failed requesting /api/doctor: %v", err)

@@ -118,7 +118,6 @@ func (s *Server) Start() (int, error) {
 	mux.HandleFunc("/api/git/diff", s.handleAPIGitDiff)
 	mux.HandleFunc("/api/flows", s.handleAPIFlows)
 	mux.HandleFunc("/api/flow/run", s.handleAPIFlowRun)
-	mux.HandleFunc("/api/data/sample", s.handleAPIDataSample)
 	mux.HandleFunc("/api/search", s.handleAPISearch)
 	mux.HandleFunc("/api/vault", s.handleAPIVault)
 	mux.HandleFunc("/api/doctor", s.handleAPIDoctor)
@@ -398,44 +397,6 @@ func (s *Server) handleAPIFlowRun(w http.ResponseWriter, r *http.Request) {
 		"flow":     req.Flow,
 		"duration": "120ms",
 		"message":  "Workflow completed successfully",
-	})
-}
-
-func (s *Server) handleAPIDataSample(w http.ResponseWriter, r *http.Request) {
-	// Sample in-memory dataset to demonstrate grid caching, filtering, and sorting
-	type ServiceRecord struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		Tier      string `json:"tier"`
-		Status    string `json:"status"`
-		Latency   string `json:"latency"`
-		MemoryMB  int    `json:"memory_mb"`
-		Team      string `json:"team"`
-		UpdatedAt string `json:"updated_at"`
-	}
-
-	records := []ServiceRecord{
-		{"svc-01", "auth-gateway", "Core", "Active", "1.2ms", 128, "Security", "2 mins ago"},
-		{"svc-02", "order-processor", "Critical", "Active", "4.8ms", 256, "Checkout", "10 mins ago"},
-		{"svc-03", "payment-router", "Critical", "Active", "2.1ms", 512, "Billing", "Just now"},
-		{"svc-04", "notification-hub", "Standard", "Idle", "18.4ms", 96, "Platform", "1 hour ago"},
-		{"svc-05", "search-indexer", "Standard", "Active", "8.9ms", 1024, "Search", "5 mins ago"},
-		{"svc-06", "audit-logger", "Core", "Active", "0.8ms", 64, "Compliance", "Just now"},
-		{"svc-07", "vault-keeper", "Core", "Active", "0.4ms", 48, "Infra", "Just now"},
-		{"svc-08", "flow-scheduler", "Core", "Active", "1.1ms", 72, "Automation", "3 mins ago"},
-		{"svc-09", "telemetry-agent", "Standard", "Active", "3.2ms", 192, "DevOps", "12 mins ago"},
-		{"svc-10", "cache-syncer", "High", "Active", "0.5ms", 384, "Data", "Just now"},
-		{"svc-11", "identity-broker", "Core", "Active", "1.6ms", 160, "Security", "8 mins ago"},
-		{"svc-12", "report-worker", "Batch", "Idle", "120ms", 512, "BI", "2 hours ago"},
-		{"svc-13", "api-proxy-edge", "Edge", "Active", "0.3ms", 96, "Network", "Just now"},
-		{"svc-14", "event-bridge", "High", "Active", "2.4ms", 320, "Platform", "4 mins ago"},
-		{"svc-15", "webhook-dispatcher", "Standard", "Active", "5.1ms", 144, "Platform", "15 mins ago"},
-	}
-
-	writeJSON(w, map[string]interface{}{
-		"records": records,
-		"cached":  true,
-		"count":   len(records),
 	})
 }
 

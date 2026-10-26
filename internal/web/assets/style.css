@@ -755,18 +755,8 @@ body {
 }
 
 /* ==========================================================================
-   Data Grid & Tables View
+   Shared Data Table & Toolbars
    ========================================================================== */
-.grid-card {
-  background-color: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-}
-
 .grid-toolbar {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border-subtle);
@@ -775,17 +765,6 @@ body {
   justify-content: space-between;
   font-size: 11px;
   color: var(--text-secondary);
-}
-
-.grid-pagination {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.grid-table-wrapper {
-  flex: 1;
-  overflow: auto;
 }
 
 .data-table {

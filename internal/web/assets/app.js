@@ -25,15 +25,6 @@
       activeFile: null,
       activeDiff: null,
     },
-    grid: {
-      cachedData: [],      // In-memory cache
-      filteredData: [],
-      currentPage: 1,
-      pageSize: 12,
-      sortColumn: null,
-      sortAsc: true,
-      searchQuery: '',
-    },
     flows: [],
     activeFlow: null,
     search: {
@@ -92,7 +83,6 @@
     initNavigation();
     initShortcuts();
     initReviewView();
-    initGridView();
     initFlowView();
     initSearchView();
     initVaultView();
@@ -106,11 +96,10 @@
     loadSystemInfo();
     loadGitStatus();
     loadFlows();
-    loadGridSampleData();
 
     // Check initial hash route
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['review', 'grid', 'flow', 'search', 'vault', 'doctor', 'httpdiff', 'dataview'].includes(hash)) {
+    if (hash && ['review', 'flow', 'search', 'vault', 'doctor', 'httpdiff', 'dataview'].includes(hash)) {
       switchTab(hash);
     }
   });
@@ -188,7 +177,6 @@
       showToast('Refreshing workspace state...', 'info');
       loadSystemInfo();
       loadGitStatus();
-      if (state.activeTab === 'grid') loadGridSampleData(true);
     });
   }
 
@@ -214,9 +202,7 @@
     });
 
     // Trigger tab specific refresh
-    if (tabId === 'grid' && state.grid.cachedData.length === 0) {
-      loadGridSampleData();
-    } else if (tabId === 'vault') {
+    if (tabId === 'vault') {
       loadVaultData();
     } else if (tabId === 'doctor') {
       loadDoctorData();
@@ -440,90 +426,6 @@
     container.innerHTML = html;
   }
 
-  // =========================================================================
-  // Module 2: Data Grid & Tables (with in-memory client-side cache)
-  // =========================================================================
-  function initGridView() {
-    const searchInput = document.getElementById('gridSearchInput');
-    const refreshBtn = document.getElementById('gridRefreshDataBtn');
-    const prevBtn = document.getElementById('gridPrevPageBtn');
-    const nextBtn = document.getElementById('gridNextPageBtn');
-
-    searchInput?.addEventListener('input', (e) => {
-      state.grid.searchQuery = e.target.value.toLowerCase();
-      state.grid.currentPage = 1;
-      filterAndRenderGrid();
-    });
-
-    refreshBtn?.addEventListener('click', () => {
-      loadGridSampleData(true);
-    });
-
-    prevBtn?.addEventListener('click', () => {
-      if (state.grid.currentPage > 1) {
-        state.grid.currentPage--;
-        renderGridRows();
-      }
-    });
-
-    nextBtn?.addEventListener('click', () => {
-      const maxPage = Math.ceil(state.grid.filteredData.length / state.grid.pageSize);
-      if (state.grid.currentPage < maxPage) {
-        state.grid.currentPage++;
-        renderGridRows();
-      }
-    });
-
-    // Row density toggler
-    document.querySelectorAll('.btn-density').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.btn-density').forEach((b) => b.classList.remove('active'));
-        e.target.classList.add('active');
-        const density = e.target.getAttribute('data-density');
-        const table = document.getElementById('dataTable');
-        if (table) {
-          table.classList.remove('density-compact', 'density-spacious');
-          if (density === 'compact') table.classList.add('density-compact');
-          if (density === 'spacious') table.classList.add('density-spacious');
-        }
-      });
-    });
-
-    // Grid export controls
-    document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
-      exportGridData('csv');
-    });
-    document.getElementById('exportJsonBtn')?.addEventListener('click', () => {
-      exportGridData('json');
-    });
-  }
-
-  function exportGridData(format) {
-    const data = state.grid.filteredData;
-    if (!data || data.length === 0) {
-      showToast('No records to export', 'warning');
-      return;
-    }
-
-    if (format === 'csv') {
-      const headers = Object.keys(data[0]);
-      const csvRows = [headers.join(',')];
-      data.forEach((row) => {
-        const values = headers.map((h) => {
-          const val = row[h] === undefined ? '' : String(row[h]);
-          return `"${val.replace(/"/g, '""')}"`;
-        });
-        csvRows.push(values.join(','));
-      });
-      downloadBlob(csvRows.join('\n'), 'shellix-data.csv', 'text/csv');
-      showToast(`Exported ${data.length} records to CSV`, 'info');
-    } else {
-      const jsonStr = JSON.stringify(data, null, 2);
-      downloadBlob(jsonStr, 'shellix-data.json', 'application/json');
-      showToast(`Exported ${data.length} records to JSON`, 'info');
-    }
-  }
-
   function downloadBlob(content, filename, contentType) {
     const blob = new Blob([content], { type: contentType });
     const url = URL.createObjectURL(blob);
@@ -536,113 +438,8 @@
     URL.revokeObjectURL(url);
   }
 
-  async function loadGridSampleData(force = false) {
-    if (!force && state.grid.cachedData.length > 0) {
-      filterAndRenderGrid();
-      return;
-    }
-
-    const data = await fetchJSON('/api/data/sample');
-    if (!data) return;
-
-    state.grid.cachedData = data.records || [];
-    filterAndRenderGrid();
-    showToast(`Loaded ${state.grid.cachedData.length} grid records into memory`, 'info');
-  }
-
-  function filterAndRenderGrid() {
-    const q = state.grid.searchQuery;
-    if (!q) {
-      state.grid.filteredData = [...state.grid.cachedData];
-    } else {
-      state.grid.filteredData = state.grid.cachedData.filter((row) =>
-        Object.values(row).some((val) =>
-          String(val).toLowerCase().includes(q)
-        )
-      );
-    }
-
-    // Sort if active
-    if (state.grid.sortColumn) {
-      const col = state.grid.sortColumn;
-      const asc = state.grid.sortAsc ? 1 : -1;
-      state.grid.filteredData.sort((a, b) => {
-        if (a[col] < b[col]) return -1 * asc;
-        if (a[col] > b[col]) return 1 * asc;
-        return 0;
-      });
-    }
-
-    renderGridHeader();
-    renderGridRows();
-  }
-
-  function renderGridHeader() {
-    const headerRow = document.getElementById('gridTableHeader');
-    if (!headerRow || state.grid.cachedData.length === 0) return;
-
-    const sample = state.grid.cachedData[0];
-    const columns = Object.keys(sample);
-
-    headerRow.innerHTML = '';
-    columns.forEach((col) => {
-      const th = document.createElement('th');
-      const isSorted = state.grid.sortColumn === col;
-      const sortArrow = isSorted ? (state.grid.sortAsc ? ' ▲' : ' ▼') : '';
-
-      th.textContent = col.toUpperCase() + sortArrow;
-      th.addEventListener('click', () => {
-        if (state.grid.sortColumn === col) {
-          state.grid.sortAsc = !state.grid.sortAsc;
-        } else {
-          state.grid.sortColumn = col;
-          state.grid.sortAsc = true;
-        }
-        filterAndRenderGrid();
-      });
-      headerRow.appendChild(th);
-    });
-  }
-
-  function renderGridRows() {
-    const tbody = document.getElementById('gridTableBody');
-    const statsEl = document.getElementById('gridRecordStats');
-    const pageInd = document.getElementById('gridPageIndicator');
-    if (!tbody) return;
-
-    const total = state.grid.filteredData.length;
-    const maxPage = Math.max(1, Math.ceil(total / state.grid.pageSize));
-
-    if (statsEl) {
-      statsEl.textContent = `Showing ${total} records (Cached in memory)`;
-    }
-    if (pageInd) {
-      pageInd.textContent = `Page ${state.grid.currentPage} of ${maxPage}`;
-    }
-
-    tbody.innerHTML = '';
-
-    if (total === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" class="empty-state-sm">No matching records found in cache.</td></tr>`;
-      return;
-    }
-
-    const start = (state.grid.currentPage - 1) * state.grid.pageSize;
-    const pageRows = state.grid.filteredData.slice(start, start + state.grid.pageSize);
-
-    pageRows.forEach((row) => {
-      const tr = document.createElement('tr');
-      Object.values(row).forEach((val) => {
-        const td = document.createElement('td');
-        td.textContent = String(val);
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-  }
-
   // =========================================================================
-  // Module 3: Automation Flows View
+  // Module 2: Automation Flows View
   // =========================================================================
   function initFlowView() {
     const flowSelect = document.getElementById('flowSelect');
@@ -735,7 +532,7 @@
   }
 
   // =========================================================================
-  // Module 4: Search Explorer View
+  // Module 3: Search Explorer View
   // =========================================================================
   function initSearchView() {
     const searchBtn = document.getElementById('executeSearchBtn');
@@ -842,7 +639,6 @@
   const PALETTE_COMMANDS = [
     { title: 'Toggle Light / Dark Theme', action: () => document.getElementById('themeToggleBtn')?.click(), icon: '🌓' },
     { title: 'Switch to Review & Diffs', tab: 'review', icon: '🔍' },
-    { title: 'Switch to Data Grid & Tables', tab: 'grid', icon: '📊' },
     { title: 'Switch to Automation Flows', tab: 'flow', icon: '🌊' },
     { title: 'Switch to Search Explorer', tab: 'search', icon: '🔎' },
     { title: 'Switch to Environment Vault', tab: 'vault', icon: '🔐' },
@@ -851,8 +647,6 @@
     { title: 'Switch to Data File Viewer (Parquet/CSV)', tab: 'dataview', icon: '📊' },
     { title: 'Load Sample Parquet File', action: () => document.getElementById('dataLoadSampleBtn')?.click(), icon: '⚡' },
     { title: 'Compare Sample APIs', action: () => document.getElementById('httpLoadSampleBtn')?.click(), icon: '⚡' },
-    { title: 'Export Data Grid to CSV', action: () => document.getElementById('exportCsvBtn')?.click(), icon: '📥' },
-    { title: 'Export Data Grid to JSON', action: () => document.getElementById('exportJsonBtn')?.click(), icon: '📄' },
     { title: 'Toggle Side-by-Side Diff', action: () => document.getElementById('diffModeSplitBtn')?.click(), icon: '⚡' },
     { title: 'Refresh Workspace State', action: () => document.getElementById('refreshBtn')?.click(), icon: '🔄' },
   ];
@@ -1008,7 +802,7 @@
   }
 
   // =========================================================================
-  // Module 5: Environment Vault (.env.vault)
+  // Module 4: Environment Vault (.env.vault)
   // =========================================================================
   function initVaultView() {
     const envSelect = document.getElementById('vaultEnvSelect');
@@ -1080,7 +874,7 @@
   }
 
   // =========================================================================
-  // Module 6: System Health & Diagnostics (Doctor)
+  // Module 5: System Health & Diagnostics (Doctor)
   // =========================================================================
   function initDoctorView() {
     // Initialized on tab switch
@@ -1142,7 +936,7 @@
   }
 
   // =========================================================================
-  // Module 7: Visual HTTP & API Response Diff Inspector
+  // Module 6: Visual HTTP & API Response Diff Inspector
   // =========================================================================
   function initHTTPDiffView() {
     const runBtn = document.getElementById('httpRunDiffBtn');
@@ -1304,7 +1098,7 @@
   }
 
   // =========================================================================
-  // Module 8: Tabular Data File Viewer (Parquet, GZ, CSV, Excel)
+  // Module 7: Tabular Data File Viewer (Parquet, GZ, CSV, Excel)
   // =========================================================================
   function initDataView() {
     const dropzone = document.getElementById('dataDropzone');
