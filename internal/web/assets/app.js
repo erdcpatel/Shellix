@@ -74,6 +74,7 @@
     initSearchView();
     initVaultView();
     initDoctorView();
+    initResourceMeter();
     initCommandPalette();
 
     // Initial data hydration
@@ -717,6 +718,7 @@
 
     state.search.results = data;
     renderSearchResults(data);
+    updateResourceMetrics();
   }
 
   function renderSearchResults(data) {
@@ -844,6 +846,52 @@
         document.getElementById('commandPaletteModal')?.classList.remove('active');
       }
     });
+  }
+
+  // =========================================================================
+  // Process Resource Meter (CPU, Memory, Goroutines)
+  // =========================================================================
+  function initResourceMeter() {
+    updateResourceMetrics();
+    // Poll every 2 seconds for live CPU & RAM usage
+    setInterval(updateResourceMetrics, 2000);
+  }
+
+  async function updateResourceMetrics() {
+    const data = await fetchJSON('/api/metrics');
+    if (!data) return;
+
+    const cpuVal = document.getElementById('meterCpuVal');
+    const ramVal = document.getElementById('meterRamVal');
+    const workersVal = document.getElementById('meterWorkersVal');
+    const dot = document.getElementById('meterWorkersDot');
+
+    if (cpuVal) {
+      cpuVal.textContent = `${data.cpu_percent.toFixed(1)}%`;
+      if (data.cpu_percent > 70) {
+        cpuVal.style.color = '#ef4444';
+      } else if (data.cpu_percent > 30) {
+        cpuVal.style.color = '#f59e0b';
+      } else {
+        cpuVal.style.color = '';
+      }
+    }
+
+    if (ramVal) {
+      ramVal.textContent = `${data.alloc_mb.toFixed(1)} MB`;
+    }
+
+    if (workersVal) {
+      workersVal.textContent = `${data.goroutines} threads`;
+    }
+
+    if (dot) {
+      if (data.cpu_percent > 40 || data.goroutines > 30) {
+        dot.classList.add('high-load');
+      } else {
+        dot.classList.remove('high-load');
+      }
+    }
   }
 
   // =========================================================================

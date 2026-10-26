@@ -91,6 +91,7 @@ func (s *Server) Start() (int, error) {
 	mux.HandleFunc("/api/search", s.handleAPISearch)
 	mux.HandleFunc("/api/vault", s.handleAPIVault)
 	mux.HandleFunc("/api/doctor", s.handleAPIDoctor)
+	mux.HandleFunc("/api/metrics", s.handleAPIMetrics)
 
 	// Register static asset file server
 	assetFS, err := fs.Sub(embeddedAssets, "assets")
@@ -627,6 +628,11 @@ func (s *Server) handleAPIDoctor(w http.ResponseWriter, r *http.Request) {
 		},
 		"checks": checks,
 	})
+}
+
+func (s *Server) handleAPIMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := SampleMetrics()
+	writeJSON(w, metrics)
 }
 
 func writeJSON(w http.ResponseWriter, data interface{}) {

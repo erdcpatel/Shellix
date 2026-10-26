@@ -211,6 +211,74 @@ body {
   border-radius: 4px;
 }
 
+/* Real-Time Resource Meter Pill */
+.resource-meter-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  transition: border-color 0.2s ease;
+}
+
+.resource-meter-pill:hover {
+  border-color: var(--border-active);
+}
+
+.meter-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.meter-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+}
+
+.meter-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.meter-val {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.meter-divider {
+  width: 1px;
+  height: 12px;
+  background-color: var(--border-subtle);
+}
+
+.meter-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+  animation: pulseDot 2s infinite ease-in-out;
+}
+
+.meter-dot.high-load {
+  background-color: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
 .live-status-pill {
   display: flex;
   align-items: center;

@@ -50,6 +50,26 @@
     </div>
 
     <div class="topbar-right">
+      <!-- Process Resource Meter (CPU, RAM, Goroutines) -->
+      <div class="resource-meter-pill" id="resourceMeterPill" title="Process Resource Usage (CPU, Memory, Active Goroutines)">
+        <span class="meter-item" id="meterCpuItem">
+          <svg class="meter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+          <span class="meter-label">CPU</span>
+          <span class="meter-val" id="meterCpuVal">0.0%</span>
+        </span>
+        <span class="meter-divider"></span>
+        <span class="meter-item" id="meterRamItem">
+          <svg class="meter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><rect x="2" y="5" width="20" height="10" rx="2"/></svg>
+          <span class="meter-label">RAM</span>
+          <span class="meter-val" id="meterRamVal">12 MB</span>
+        </span>
+        <span class="meter-divider"></span>
+        <span class="meter-item" id="meterWorkersItem" title="Active worker goroutines (parallel search & flow threads)">
+          <span class="meter-dot" id="meterWorkersDot"></span>
+          <span class="meter-val" id="meterWorkersVal">12 workers</span>
+        </span>
+      </div>
+
       <div class="live-status-pill">
         <span class="live-dot"></span>
         <span class="live-text">Live Server</span>
