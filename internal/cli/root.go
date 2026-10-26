@@ -62,6 +62,7 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewViewCmd(app),
 		NewCompletionCmd(),
 		NewPSCmd(app),
+		NewWebCmd(app),
 	)
 
 	return rootCmd

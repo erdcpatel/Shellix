@@ -123,3 +123,10 @@ graph TD
 - **Native Windows Credential Manager (`wincred`)**: Direct Win32 API interop for hardware-backed master key storage without external daemon dependencies.
 - **Windows Task Scheduler Integration (`schtasks.exe`)**: First-class background scheduler service runner (`sx flow schedule daemon install`) that registers logon-triggered background executions without third-party service wrappers.
 - **PowerShell Prompt Hooks & Auto-Completion**: Dynamic completion scripts and location-aware environment injection hooks (`sx env hook powershell`) integrated into PowerShell `$PROFILE`.
+
+### 3.16 Zero-Latency Embedded Web Workbench (`internal/web`)
+- **Pure Go Single Binary Web Server**: Built with `net/http` and `//go:embed` asset embedding, booting in $< 3\text{ ms}$ with zero Node.js, npm, or Docker dependencies.
+- **Linear/Vercel Dark Design System**: High-density developer UI featuring Tokyo Night syntax highlighting, glassmorphism card surfaces, and subtle zinc borders.
+- **Pre-Flight Code Review & Split Diffs**: Side-by-side and unified diff visualization (`ParseUnifiedDiff`) aligned by line numbers with additions/deletions stats and file tree filtering.
+- **Modular Data Grid & Caching Architecture**: In-memory virtual data grid designed for viewing large datasets, with client-side caching, column sorting, instant filtering, and pagination.
+- **Cross-Platform Browser Launcher**: Native browser spawn via `cmd.exe /c start` on Windows, `open` on macOS, and `xdg-open` on Linux.

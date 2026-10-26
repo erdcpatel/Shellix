@@ -28,8 +28,31 @@ Use `sx` whenever you need to:
 | `sx stash` | Git Stash Management | Inspect, push, and pop saved stashes (`sx stash list`, `push -m "..."`, `pop`) |
 | `sx g s` or `sx git status` | Sub-2ms repository status | Current branch, latest commit hash/author, staged, unstaged, untracked files |
 | `sx g <any-git-arg>` | Transparent native Git passthrough | Runs system Git directly with native speed |
+| `sx web` | Zero-Latency Embedded Web Workbench | Launches embedded Linear-dark browser console with side-by-side diffs, data grid, and flow waves |
 
-### 2. Automation Flows with Parallel Steps, Watcher & Interactive TUI
+### 2. Zero-Latency Embedded Web Workbench
+
+Instant, zero-dependency browser workbench embedded directly inside the single Go binary:
+
+```bash
+# Launch web workbench and automatically open default browser
+sx web
+
+# Specify custom port and host
+sx web --port 7890 --host 127.0.0.1
+
+# Headless mode without auto-opening browser (ideal for remotes / background)
+sx web --no-browser
+```
+
+Key Capabilities:
+- **Pre-Flight Code Review**: Side-by-side split diffs, changed file filtering, and change counters.
+- **High-Performance Data Grid**: In-memory virtual grid with live client-side caching, search filtering, and column sorting.
+- **Automation Flow DAG**: Visual execution waves and step inspector.
+- **Pure-Local Search Explorer**: Multi-folder code search with directory rollups and line jumping.
+- **Command Palette**: `Cmd+K` / `Ctrl+K` for instant keyboard navigation.
+
+### 3. Automation Flows with Parallel Steps, Watcher & Interactive TUI
 
 Shellix Flows are declarative YAML files that replace complex shell scripts.
 

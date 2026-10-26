@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shellix Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="url(#brandGrad)"/>
+          <defs>
+            <linearGradient id="brandGrad" x1="3" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#7c3aed"/>
+              <stop offset="1" stop-color="#06b6d4"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span class="brand-name">Shellix <span class="brand-badge">WEB</span></span>
+      </div>
+
+      <div class="topbar-divider"></div>
+
+      <!-- Workspace & Git Pills -->
+      <div class="context-pill" id="workspacePill" title="Workspace Directory">
+        <svg class="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span id="workspaceName">Loading...</span>
+      </div>
+
+      <div class="context-pill branch-pill" id="branchPill" title="Active Git Branch">
+        <svg class="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        <span id="branchName">main</span>
+        <span class="pill-badge" id="branchAheadCount">0 ahead</span>
+      </div>
+    </div>
+
+    <div class="topbar-center">
+      <button class="quick-search-btn" id="openCommandPaletteBtn" title="Quick Search (Ctrl+K / Cmd+K)">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span>Search commands, files, diffs...</span>
+        <kbd class="kbd-shortcut">⌘K</kbd>
+      </button>
+    </div>
+
+    <div class="topbar-right">
+      <div class="live-status-pill">
+        <span class="live-dot"></span>
+        <span class="live-text">Live Server</span>
+      </div>
+      <button class="action-btn" id="refreshBtn" title="Refresh Workspace State">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- App Layout -->
+  <div class="app-container">
+    <!-- Left Sidebar Navigation -->
+    <nav class="sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">WORKBENCH</div>
+        <button class="nav-item active" data-tab="review">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+          <span class="nav-label">Review & Diffs</span>
+          <span class="nav-badge" id="reviewBadge">0</span>
+        </button>
+
+        <button class="nav-item" data-tab="grid">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          <span class="nav-label">Data Grid & Tables</span>
+          <span class="nav-badge new-badge">Grid</span>
+        </button>
+
+        <button class="nav-item" data-tab="flow">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="nav-label">Automation Flows</span>
+          <span class="nav-badge" id="flowsBadge">0</span>
+        </button>
+
+        <button class="nav-item" data-tab="search">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span class="nav-label">Search Explorer</span>
+        </button>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">SYSTEM & SECURITY</div>
+        <button class="nav-item" data-tab="vault">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="nav-label">Environment Vault</span>
+        </button>
+
+        <button class="nav-item" data-tab="doctor">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          <span class="nav-label">System Diagnostics</span>
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="footer-stats">
+          <span class="stat-item"><span class="stat-dot"></span> Go 1.24+</span>
+          <span class="stat-item">Pure Go / No CGO</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content Workspace -->
+    <main class="content-viewport">
+      <!-- 1. Review & Diffs View -->
+      <section class="tab-pane active" id="pane-review">
+        <div class="pane-header">
+          <div class="pane-header-title">
+            <h2>Pre-Flight Code Review & Side-by-Side Diffs</h2>
+            <p class="pane-desc">Review local working changes and unpushed commits before pushing upstream.</p>
+          </div>
+          <div class="pane-header-actions">
+            <div class="button-group">
+              <button class="seg-btn active" id="diffModeSplitBtn">Side-by-Side</button>
+              <button class="seg-btn" id="diffModeUnifiedBtn">Unified</button>
+            </div>
+            <label class="checkbox-label">
+              <input type="checkbox" id="ignoreWhitespaceCheck">
+              <span>Ignore Whitespace</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="review-workbench">
+          <!-- Left: Changed Files Tree -->
+          <div class="review-filetree">
+            <div class="filetree-header">
+              <span>Changed Files (<span id="changedFilesCount">0</span>)</span>
+              <div class="filetree-filter-box">
+                <input type="text" id="fileFilterInput" placeholder="Filter files...">
+              </div>
+            </div>
+            <div class="filetree-list" id="fileListContainer">
+              <!-- Dynamically populated files -->
+            </div>
+          </div>
+
+          <!-- Right: Visual Diff Viewer -->
+          <div class="review-diffview">
+            <div class="diffview-header" id="diffViewHeader">
+              <div class="active-file-meta">
+                <span class="file-icon">📄</span>
+                <span class="file-path" id="activeDiffFilePath">Select a file to inspect diff</span>
+                <span class="diff-stats" id="activeDiffStats"></span>
+              </div>
+              <div class="diff-view-controls">
+                <button class="btn btn-sm" id="copyDiffBtn">Copy Diff</button>
+              </div>
+            </div>
+            <div class="diffview-content" id="diffContentContainer">
+              <div class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                <h3>No File Selected</h3>
+                <p>Choose a modified, staged, or untracked file from the left to inspect side-by-side changes.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Data Grid & Tables View -->
+      <section class="tab-pane" id="pane-grid">
+        <div class="pane-header">
+          <div class="pane-header-title">
+            <h2>High-Performance Virtual Data Grid</h2>
+            <p class="pane-desc">Modular in-memory grid with client-side caching, instant search filtering, and column sorting.</p>
+          </div>
+          <div class="pane-header-actions">
+            <input type="text" class="input-text" id="gridSearchInput" placeholder="Live search records...">
+            <button class="btn btn-primary" id="gridRefreshDataBtn">Refresh Grid</button>
+          </div>
+        </div>
+
+        <div class="grid-card">
+          <div class="grid-toolbar">
+            <div class="grid-stats" id="gridRecordStats">Showing 0 records (Cached in memory)</div>
+            <div class="grid-pagination">
+              <button class="btn btn-sm" id="gridPrevPageBtn">Previous</button>
+              <span id="gridPageIndicator">Page 1 of 1</span>
+              <button class="btn btn-sm" id="gridNextPageBtn">Next</button>
+            </div>
+          </div>
+          <div class="grid-table-wrapper">
+            <table class="data-table" id="dataTable">
+              <thead>
+                <tr id="gridTableHeader">
+                  <!-- Dynamically populated columns -->
+                </tr>
+              </thead>
+              <tbody id="gridTableBody">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Automation Flows View -->
+      <section class="tab-pane" id="pane-flow">
+        <div class="pane-header">
+          <div class="pane-header-title">
+            <h2>Automation Pipeline Waves & Execution</h2>
+            <p class="pane-desc">Declarative multi-wave DAG execution engine with parallel steps and live logs.</p>
+          </div>
+          <div class="pane-header-actions">
+            <select class="input-select" id="flowSelect">
+              <option value="">Select a workflow...</option>
+            </select>
+            <button class="btn btn-primary" id="runSelectedFlowBtn">Run Flow</button>
+          </div>
+        </div>
+
+        <div class="flow-workbench">
+          <div class="flow-blueprint" id="flowBlueprintContainer">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              <h3>No Flow Selected</h3>
+              <p>Select a flow above to inspect its execution wave partitioning and dependencies.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Search Explorer View -->
+      <section class="tab-pane" id="pane-search">
+        <div class="pane-header">
+          <div class="pane-header-title">
+            <h2>Pure-Local Multi-Folder Code Search</h2>
+            <p class="pane-desc">Blazing-fast multi-threaded search across checked-out workspace folders with directory rollups.</p>
+          </div>
+        </div>
+
+        <div class="search-workbench">
+          <div class="search-bar-row">
+            <input type="text" class="input-text search-main-input" id="searchQueryInput" placeholder="Search string or regex across folders (e.g. ValidateToken, orderProcessingTimeout)...">
+            <input type="text" class="input-text search-ext-input" id="searchExtInput" placeholder="Extensions (e.g. go,java)">
+            <button class="btn btn-primary" id="executeSearchBtn">Search</button>
+          </div>
+
+          <div class="search-results-layout">
+            <div class="search-rollup-pane" id="searchRollupPane">
+              <div class="rollup-header">Directory Rollup</div>
+              <div class="rollup-list" id="searchRollupList">
+                <div class="empty-state-sm">Enter a search query above to begin.</div>
+              </div>
+            </div>
+            <div class="search-matches-pane" id="searchMatchesPane">
+              <div class="matches-header">Matching Lines</div>
+              <div class="matches-list" id="searchMatchesList">
+                <div class="empty-state-sm">No active search results.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Environment Vault View -->
+      <section class="tab-pane" id="pane-vault">
+        <div class="pane-header">
+          <div class="pane-header-title">
+            <h2>Encrypted Project Environment (.env.vault)</h2>
+            <p class="pane-desc">Hardware-backed AES-256-GCM zero-knowledge environment vault.</p>
+          </div>
+          <div class="pane-header-actions">
+            <select class="input-select" id="vaultEnvSelect">
+              <option value="default">Environment: default</option>
+              <option value="staging">Environment: staging</option>
+              <option value="prod">Environment: prod</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="vault-card">
+          <div class="vault-table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 30%;">VARIABLE KEY</th>
+                  <th style="width: 50%;">SECRET VALUE</th>
+                  <th style="width: 20%;">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="vaultTableBody">
+                <!-- Dynamically populated secrets -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. System Diagnostics View -->
+      <section class="tab-pane" id="pane-doctor">
+        <div class="pane-header">
+          <div class="pane-header-title">
+            <h2>System Health & Environment Diagnostics</h2>
+            <p class="pane-desc">Deep inspection of Git fast-path, JDK runtimes, OS Keyring, and SSH hardening.</p>
+          </div>
+        </div>
+        <div class="doctor-grid" id="doctorContainer">
+          <!-- Dynamically populated diagnostics -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Command Palette Modal (Ctrl+K / Cmd+K) -->
+  <div class="modal-overlay" id="commandPaletteModal">
+    <div class="modal-card">
+      <div class="palette-input-wrapper">
+        <svg class="palette-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="paletteInput" placeholder="Type a command or switch views (e.g. review, grid, flow)..." autocomplete="off">
+        <kbd class="kbd-esc" id="closePaletteBtn">ESC</kbd>
+      </div>
+      <div class="palette-results" id="paletteResults">
+        <!-- Dynamically populated palette options -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Non-blocking Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

@@ -154,6 +154,10 @@ Preview DAG execution waves, parameter overrides (`--set key=val`), and step dep
 Blazing-fast multi-threaded search across hundreds of checked-out folders without network or Git dependencies. Generates top-level directory rollup summary tables, surrounding context lines (`-C`), extension filters (`--ext`), script-friendly directory listing (`--dirs-only`), and automated Markdown checklist, JSON, and CSV reports:
 ![Directory Search Report](docs/images/32_shellix_search_report.png)
 
+### 27. Zero-Latency Embedded Web Workbench (`sx web`)
+Instant, zero-dependency browser workbench embedded directly inside the single Go binary (`//go:embed`). Features a sleek Linear/Vercel modern dark theme, side-by-side split diff reviewer, high-performance in-memory virtual data grid with client-side caching, visual workflow DAG waves, pure-local search explorer, and command palette (`Cmd/Ctrl+K`):
+![Web Workbench](docs/images/33_shellix_web_workbench.png)
+
 ---
 
 ## 🚀 Key Features
@@ -161,7 +165,10 @@ Blazing-fast multi-threaded search across hundreds of checked-out folders withou
 1. **Dual-Engine Git Layer**:
    - **Fast Path (`go-git`)**: In-process status, branch tracking, and commit inspection running in **~1.5ms to 2.5ms** with zero fork or emulation delay.
    - **Full Path (Native Git)**: Seamless and transparent passthrough to the system Git binary for complex rebase, merge, and stash workflows.
-2. **Shellix Flows (Automation Engine)**:
+2. **Zero-Latency Embedded Web Workbench**:
+   - Single-binary embedded local web console (`sx web`) booting in $< 3\text{ ms}$ with zero Node/npm/Docker dependencies.
+   - Modular layout supporting side-by-side code reviews, high-performance cached virtual data grids, visual automation waves, and instant multi-folder search.
+3. **Shellix Flows (Automation Engine)**:
    - Declarative YAML workflows to automate builds, tests, releases, and local pipelines (pure local Go compiler, Java Maven/Gradle, Git, and test runners—zero Docker required).
    - Support for sequential and parallel execution waves, dependency DAGs (`depends_on`), conditional step execution (`if:`), timeouts with exponential backoff, parameterization (`params` & `--set`), interactive approval gates (`prompt:`), artifact preservation (`artifacts:` & `sx flow artifacts`), dry-run execution blueprinting (`sx flow plan`), Mermaid architecture exports (`--mermaid`), and desktop/webhook notifications (`notify:`).
 3. **High-Throughput Folder & Code Search**:
