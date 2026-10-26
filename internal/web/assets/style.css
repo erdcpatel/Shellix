@@ -338,6 +338,16 @@ body {
   flex-direction: column;
   flex-shrink: 0;
   user-select: none;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, border-right 0.2s ease;
+}
+
+.app-container.sidebar-collapsed .sidebar {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  border-right: none !important;
+  padding: 0 !important;
 }
 
 .nav-section {
@@ -1541,4 +1551,122 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+/* Full Screen Zen Mode */
+.dataview-grid-card.full-screen-mode {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1000 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background-color: var(--bg-surface) !important;
+}
+
+.dataview-grid-card.full-screen-mode .tabulator-wrapper {
+  height: calc(100vh - 54px) !important;
+}
+
+.tabulator-wrapper {
+  flex: 1;
+  min-height: 480px;
+  overflow: hidden;
+}
+
+/* Collapsed Dropzone */
+.dataview-dropzone.collapsed {
+  padding: 8px 16px;
+  flex-direction: row;
+  justify-content: space-between;
+  border-style: solid;
+  background-color: var(--bg-surface-elevated);
+}
+
+.dataview-dropzone.collapsed .dropzone-icon,
+.dataview-dropzone.collapsed .dropzone-sub {
+  display: none;
+}
+
+/* ==========================================================================
+   Tabulator Dark & Light Theme Integration
+   ========================================================================== */
+.tabulator {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11.5px !important;
+}
+
+.tabulator .tabulator-header {
+  background-color: var(--bg-surface-elevated) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+}
+
+.tabulator .tabulator-header .tabulator-col {
+  background-color: var(--bg-surface-elevated) !important;
+  border-right: 1px solid var(--border-subtle) !important;
+}
+
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+  padding: 6px 10px !important;
+}
+
+.tabulator .tabulator-header .tabulator-col input {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  margin-top: 4px;
+}
+
+.tabulator .tabulator-header .tabulator-col input:focus {
+  border-color: var(--accent) !important;
+  outline: none;
+}
+
+.tabulator .tabulator-row {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}
+
+.tabulator .tabulator-row:hover {
+  background-color: var(--bg-surface-hover) !important;
+}
+
+.tabulator .tabulator-cell {
+  border-right: 1px solid var(--border-subtle) !important;
+  padding: 6px 10px !important;
+}
+
+.tabulator.density-compact .tabulator-cell {
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+}
+
+.tabulator.density-spacious .tabulator-cell {
+  padding: 12px 14px !important;
+  font-size: 12px !important;
+}
+
+.btn-zen {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background-color: var(--bg-surface-elevated);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.btn-zen:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

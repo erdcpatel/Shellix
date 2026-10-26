@@ -152,6 +152,24 @@
       });
     });
 
+    // Sidebar collapse toggler
+    const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+    const appContainer = document.querySelector('.app-container');
+
+    if (localStorage.getItem('shellix_sidebar_collapsed') === 'true') {
+      appContainer?.classList.add('sidebar-collapsed');
+    }
+
+    sidebarToggleBtn?.addEventListener('click', () => {
+      appContainer?.classList.toggle('sidebar-collapsed');
+      const isCollapsed = appContainer?.classList.contains('sidebar-collapsed');
+      localStorage.setItem('shellix_sidebar_collapsed', isCollapsed);
+      showToast(isCollapsed ? 'Sidebar collapsed (press [ to restore)' : 'Sidebar expanded', 'info');
+      setTimeout(() => {
+        state.dataview?.tabulatorInstance?.redraw(true);
+      }, 250);
+    });
+
     document.getElementById('refreshBtn')?.addEventListener('click', () => {
       showToast('Refreshing workspace state...', 'info');
       loadSystemInfo();
@@ -860,9 +878,30 @@
         }
       }
 
-      // Escape -> close palette
+      // '[' or Cmd/Ctrl+B -> Toggle Sidebar
+      if ((e.key === '[' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b')) && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+        e.preventDefault();
+        document.getElementById('sidebarToggleBtn')?.click();
+      }
+
+      // 'f' or Shift+F when in dataview -> Toggle Zen full screen
+      if ((e.key === 'f' || e.key === 'F') && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+        if (state.activeTab === 'dataview') {
+          e.preventDefault();
+          document.getElementById('gridZenToggleBtn')?.click();
+        }
+      }
+
+      // Escape -> close palette or exit full-screen
       if (e.key === 'Escape') {
         document.getElementById('commandPaletteModal')?.classList.remove('active');
+        const gridCard = document.getElementById('dataGridCard');
+        if (gridCard?.classList.contains('full-screen-mode')) {
+          gridCard.classList.remove('full-screen-mode');
+          const zenText = document.getElementById('zenBtnText');
+          if (zenText) zenText.textContent = 'Maximize';
+          setTimeout(() => state.dataview?.tabulatorInstance?.redraw(true), 150);
+        }
       }
     });
   }
@@ -1263,6 +1302,10 @@
     const filterInput = document.getElementById('dataFilterInput');
     const exportCsvBtn = document.getElementById('dataExportCsvBtn');
     const exportJsonBtn = document.getElementById('dataExportJsonBtn');
+    const toggleColsBtn = document.getElementById('toggleColDrawerBtn');
+    const zenBtn = document.getElementById('gridZenToggleBtn');
+    const gridCard = document.getElementById('dataGridCard');
+    const zenText = document.getElementById('zenBtnText');
 
     uploadBtn?.addEventListener('click', () => fileInput?.click());
     dropzone?.addEventListener('click', (e) => {
@@ -1307,29 +1350,51 @@
       updateColumnProjection();
     });
 
-    filterInput?.addEventListener('input', (e) => {
-      state.dataview.filter = e.target.value.trim();
-      updateColumnProjection();
+    toggleColsBtn?.addEventListener('click', () => {
+      const colsCard = document.getElementById('dataColumnsCard');
+      if (colsCard) {
+        const isHidden = colsCard.style.display === 'none';
+        colsCard.style.display = isHidden ? 'block' : 'none';
+        toggleColsBtn.textContent = isHidden ? 'Columns ▲' : 'Columns ▼';
+      }
+    });
+
+    zenBtn?.addEventListener('click', () => {
+      gridCard?.classList.toggle('full-screen-mode');
+      const isZen = gridCard?.classList.contains('full-screen-mode');
+      if (zenText) zenText.textContent = isZen ? 'Minimize' : 'Maximize';
+      showToast(isZen ? 'Zen Mode (Press Esc to minimize)' : 'Exited Full Screen', 'info');
+      setTimeout(() => state.dataview?.tabulatorInstance?.redraw(true), 150);
     });
 
     exportCsvBtn?.addEventListener('click', () => {
-      exportDataViewRows('csv');
+      if (state.dataview?.tabulatorInstance) {
+        state.dataview.tabulatorInstance.download('csv', `${state.dataview.summary?.file_name || 'data'}.csv`);
+      } else {
+        exportDataViewRows('csv');
+      }
     });
 
     exportJsonBtn?.addEventListener('click', () => {
-      exportDataViewRows('json');
+      if (state.dataview?.tabulatorInstance) {
+        state.dataview.tabulatorInstance.download('json', `${state.dataview.summary?.file_name || 'data'}.json`);
+      } else {
+        exportDataViewRows('json');
+      }
     });
 
+    // Row density selector
     document.querySelectorAll('.btn-data-density').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         document.querySelectorAll('.btn-data-density').forEach(b => b.classList.remove('active'));
         e.target.classList.add('active');
         const density = e.target.getAttribute('data-density');
-        const table = document.getElementById('dataViewerTable');
-        if (table) {
-          table.classList.remove('density-compact', 'density-spacious');
-          if (density === 'compact') table.classList.add('density-compact');
-          if (density === 'spacious') table.classList.add('density-spacious');
+        const container = document.getElementById('tabulatorGridContainer');
+        if (container) {
+          container.classList.remove('density-compact', 'density-spacious');
+          if (density === 'compact') container.classList.add('density-compact');
+          if (density === 'spacious') container.classList.add('density-spacious');
+          state.dataview?.tabulatorInstance?.redraw(true);
         }
       });
     });
@@ -1380,10 +1445,13 @@
   }
 
   function renderDataView(data) {
+    const dropzone = document.getElementById('dataDropzone');
     const profileBar = document.getElementById('dataProfileBar');
     const columnsCard = document.getElementById('dataColumnsCard');
     const gridCard = document.getElementById('dataGridCard');
 
+    // Collapse dropzone to maximize screen space
+    if (dropzone) dropzone.classList.add('collapsed');
     if (profileBar) profileBar.style.display = 'flex';
     if (columnsCard) columnsCard.style.display = 'block';
     if (gridCard) gridCard.style.display = 'block';
@@ -1407,9 +1475,9 @@
     if (colsList) {
       colsList.innerHTML = '';
       data.columns.forEach((col) => {
-        const isSelected = state.dataview.selectedColumns.includes(col.Name || col.name);
         const colName = col.Name || col.name;
         const colType = col.Type || col.type || 'STRING';
+        const isSelected = state.dataview.selectedColumns.includes(colName);
 
         const label = document.createElement('label');
         label.className = `col-toggle-pill ${isSelected ? 'active' : ''}`;
@@ -1434,45 +1502,55 @@
       });
     }
 
-    // Render Table Header & Rows
-    const headerRow = document.getElementById('dataViewerHeader');
-    const bodyEl = document.getElementById('dataViewerBody');
-    const statsEl = document.getElementById('dataGridStats');
-
-    if (statsEl) {
-      statsEl.textContent = `Displaying ${data.rows.length} of ${data.total_rows.toLocaleString()} rows (60 FPS virtual DOM)`;
-    }
-
     const activeCols = state.dataview.selectedColumns.length > 0
       ? state.dataview.selectedColumns
       : data.columns.map(c => c.Name || c.name);
 
-    if (headerRow) {
-      headerRow.innerHTML = '';
-      activeCols.forEach((colName) => {
-        const th = document.createElement('th');
-        th.textContent = colName;
-        headerRow.appendChild(th);
+    const statsEl = document.getElementById('dataGridStats');
+    if (statsEl) {
+      statsEl.textContent = `Displaying ${data.rows.length} of ${data.total_rows.toLocaleString()} rows (Virtual DOM 60 FPS)`;
+    }
+
+    // Build Tabulator columns with interactive header filter inputs & freeze first column
+    const tabColumns = activeCols.map((colName, idx) => ({
+      title: colName,
+      field: colName,
+      headerFilter: "input",
+      headerFilterPlaceholder: "Filter...",
+      resizable: true,
+      frozen: idx === 0, // Freeze first column for horizontal scrolling
+      sorter: "string",
+    }));
+
+    if (state.dataview.tabulatorInstance) {
+      state.dataview.tabulatorInstance.setColumns(tabColumns);
+      state.dataview.tabulatorInstance.setData(data.rows);
+    } else if (window.Tabulator) {
+      state.dataview.tabulatorInstance = new Tabulator("#tabulatorGridContainer", {
+        data: data.rows,
+        columns: tabColumns,
+        layout: "fitDataFill",
+        movableColumns: true,
+        resizableColumns: true,
+        renderVertical: "virtual",
+        height: "520px",
+        placeholder: "No records found matching criteria",
       });
     }
 
-    if (bodyEl) {
-      bodyEl.innerHTML = '';
-      if (!data.rows || data.rows.length === 0) {
-        bodyEl.innerHTML = `<tr><td colspan="${activeCols.length || 1}" class="empty-state-sm">No rows match criteria.</td></tr>`;
+    // Connect global search box
+    const filterInput = document.getElementById('dataFilterInput');
+    filterInput?.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      if (!state.dataview.tabulatorInstance) return;
+      if (!query) {
+        state.dataview.tabulatorInstance.clearFilter();
       } else {
-        data.rows.forEach((r) => {
-          const tr = document.createElement('tr');
-          activeCols.forEach((colName) => {
-            const td = document.createElement('td');
-            const val = r[colName] === undefined ? '' : String(r[colName]);
-            td.textContent = val;
-            tr.appendChild(td);
-          });
-          bodyEl.appendChild(tr);
+        state.dataview.tabulatorInstance.setFilter((row) => {
+          return Object.values(row).some(v => String(v).toLowerCase().includes(query));
         });
       }
-    }
+    });
   }
 
   function exportDataViewRows(format) {
