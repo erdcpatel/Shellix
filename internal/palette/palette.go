@@ -159,8 +159,6 @@ func (m Model) View() string {
 		switch a.Category {
 		case CatFlow:
 			bColor = "#FF79C6"
-		case CatJava:
-			bColor = "#FFA500"
 		case CatSSH:
 			bColor = "#00BFFF"
 		case CatBookmark:

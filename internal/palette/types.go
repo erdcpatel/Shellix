@@ -6,7 +6,6 @@ type ActionCategory string
 const (
 	CatCore     ActionCategory = "CORE"
 	CatFlow     ActionCategory = "FLOW"
-	CatJava     ActionCategory = "JAVA"
 	CatSSH      ActionCategory = "SSH"
 	CatBookmark ActionCategory = "BOOKMARK"
 	CatSnippet  ActionCategory = "SNIP"

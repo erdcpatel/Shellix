@@ -96,6 +96,24 @@ func TestWebServerLifecycleAndAPIs(t *testing.T) {
 		t.Errorf("expected 200 for /api/search, got %d", searchResp.StatusCode)
 	}
 
+	// 4b. Verify /api/search with nonexistent scope returns warnings
+	nonexistentResp, err := http.Get(baseURL + "/api/search?q=type&scope=doesnotexist123xyz")
+	if err != nil {
+		t.Fatalf("failed requesting /api/search with nonexistent scope: %v", err)
+	}
+	defer nonexistentResp.Body.Close()
+	if nonexistentResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for nonexistent scope /api/search, got %d", nonexistentResp.StatusCode)
+	}
+	var searchResult map[string]interface{}
+	if err := json.NewDecoder(nonexistentResp.Body).Decode(&searchResult); err != nil {
+		t.Fatalf("failed decoding nonexistent scope response: %v", err)
+	}
+	warnings, ok := searchResult["warnings"].([]interface{})
+	if !ok || len(warnings) == 0 {
+		t.Errorf("expected warnings in /api/search response for nonexistent scope, got: %+v", searchResult)
+	}
+
 	// 5. Verify /api/vault
 	vaultResp, err := http.Get(baseURL + "/api/vault?env=default")
 	if err != nil {

@@ -129,18 +129,6 @@ steps:
     depends_on: [gate]
 ```
 
-### 3. Java Toolchain & Multi-Version Manager
-
-| Command | Purpose |
-|---|---|
-| `sx j ls` or `sx java list` | Discovers and lists all installed JDKs across the machine |
-| `sx j use <version>` | Resolves matching JDK and outputs activation exports |
-| `eval $(sx j use <version> -e)` | Activates the chosen Java version in the current shell |
-| `sx j shell <version>` | Spawns a subshell configured with that JDK |
-| `sx j env` | Inspects current Java runtime, compiler, and project build file |
-| `sx j build [args...]` | Builds project with Maven or Gradle wrapper automatically |
-| `sx j run <file.java>` | Executes a single Java source file directly |
-
 ### 4. Native OS Credential Manager (Vault)
 
 Uses Windows Credential Manager (`wincred`) on Windows and macOS Keychain on macOS.
@@ -179,10 +167,10 @@ sx ssh tunnel prod-db 5432:localhost:5432
 sx ssh tunnel prod-web 8080:80
 ```
 
-### 3. System Diagnostics & Rapid Onboarding
+### 6. System Diagnostics & Rapid Onboarding
 
 ```bash
-# Run comprehensive health diagnostics on Git, JDKs, Keyring, and SSH
+# Run comprehensive health diagnostics on Git, Keyring, and SSH
 sx doctor
 
 # Initialize Shellix environment or generate shell integration
@@ -277,7 +265,7 @@ sx history clear -y
 ### 9. Universal Command Palette & Launcher
 
 ```bash
-# Launch interactive fuzzy launcher across all flows, JDKs, SSH, bookmarks & history
+# Launch interactive fuzzy launcher across all flows, SSH, bookmarks & history
 sx palette
 sx run
 sx p

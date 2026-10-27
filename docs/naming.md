@@ -28,7 +28,7 @@ Before adopting the name, a systematic collision analysis across open-source pac
 The 2-character alias `sx` and 3-character alias `slx` allow instant developer muscle memory (similar to `gh`, `rg`, `fd`, `jq`):
 - `sx g` / `slx g` -> Instant Git TUI dashboard
 - `sx flow run <name>` / `slx flow run <name>` -> Execute automation workflow
-- `sx java ls` / `slx java ls` -> Multi-JDK version discovery
+- `sx palette` / `slx palette` -> Universal fuzzy command palette
 - `sx search <query>` / `slx search <query>` -> Parallel Git-aware code search
 - `sx doctor` / `slx doctor` -> Comprehensive environment health diagnostics
 

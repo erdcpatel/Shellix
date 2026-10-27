@@ -333,3 +333,98 @@ func TestSearchWalkDirAndPathNormalization(t *testing.T) {
 		t.Errorf("expected top-level directory 'pkg', got '%s'", match.Directory)
 	}
 }
+
+func TestSearchNonExistentPathWarning(t *testing.T) {
+	engine := NewEngine()
+	nonExistentPath := filepath.Join(os.TempDir(), "shellix-does-not-exist-dir-xyz")
+	opts := SearchOptions{
+		Query: "anything",
+		Paths: []string{nonExistentPath},
+	}
+
+	summary, err := engine.Search(opts)
+	if err != nil {
+		t.Fatalf("search should not return error on nonexistent path, got: %v", err)
+	}
+
+	if summary.TotalMatches != 0 {
+		t.Errorf("expected 0 matches for nonexistent path, got %d", summary.TotalMatches)
+	}
+
+	if len(summary.Warnings) == 0 {
+		t.Fatalf("expected warnings for nonexistent path, got none")
+	}
+
+	found := false
+	for _, w := range summary.Warnings {
+		if strings.Contains(w, "does not exist") && strings.Contains(w, nonExistentPath) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning mentioning path does not exist, got: %v", summary.Warnings)
+	}
+
+	// Verify PrintResults works with warnings
+	PrintResults(summary, opts)
+}
+
+func TestSearchMixedPathWarning(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "shellix-search-mixed-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	file := filepath.Join(tempDir, "sample.txt")
+	_ = os.WriteFile(file, []byte("Hello Mixed Search Path\n"), 0644)
+
+	nonExistentPath := filepath.Join(tempDir, "ghost-dir")
+
+	engine := NewEngine()
+	opts := SearchOptions{
+		Query: "Mixed Search",
+		Paths: []string{tempDir, nonExistentPath},
+	}
+
+	summary, err := engine.Search(opts)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+
+	if summary.TotalMatches != 1 {
+		t.Fatalf("expected 1 match from valid path, got %d", summary.TotalMatches)
+	}
+
+	if len(summary.Warnings) != 1 {
+		t.Fatalf("expected 1 warning for ghost-dir, got %d: %v", len(summary.Warnings), summary.Warnings)
+	}
+
+	if !strings.Contains(summary.Warnings[0], "ghost-dir") {
+		t.Errorf("expected warning to mention ghost-dir, got: %s", summary.Warnings[0])
+	}
+}
+
+func TestSearchMultipleNonExistentPaths(t *testing.T) {
+	engine := NewEngine()
+	path1 := filepath.Join(os.TempDir(), "nonexistent-dir-alpha-123")
+	path2 := filepath.Join(os.TempDir(), "nonexistent-dir-beta-456")
+	opts := SearchOptions{
+		Query: "target",
+		Paths: []string{path1, path2},
+	}
+
+	summary, err := engine.Search(opts)
+	if err != nil {
+		t.Fatalf("search returned error on multiple nonexistent paths: %v", err)
+	}
+
+	if summary.TotalMatches != 0 {
+		t.Errorf("expected 0 matches, got %d", summary.TotalMatches)
+	}
+
+	if len(summary.Warnings) != 2 {
+		t.Fatalf("expected 2 warnings, got %d: %v", len(summary.Warnings), summary.Warnings)
+	}
+}

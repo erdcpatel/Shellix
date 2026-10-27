@@ -26,11 +26,11 @@ func sampleActions() []PaletteAction {
 			Command:     "sx g",
 		},
 		{
-			ID:          "java-switch-21",
-			Title:       "Switch to Java 21 (Temurin)",
-			Description: "Exports JAVA_HOME for JDK 21",
-			Category:    CatJava,
-			Command:     "sx java use 21",
+			ID:          "search-code",
+			Title:       "Parallel Code Search",
+			Description: "High-speed multi-repo search",
+			Category:    CatCore,
+			Command:     "sx search",
 		},
 		{
 			ID:          "ssh-tunnel-bastion",
@@ -71,14 +71,14 @@ func TestPaletteFilteringAndNavigation(t *testing.T) {
 		t.Fatalf("expected %d initial actions, got %d", len(actions), len(m.filtered))
 	}
 
-	// 1. Filter by "java"
-	m.textInput.SetValue("java")
+	// 1. Filter by "code search"
+	m.textInput.SetValue("code search")
 	m.filter()
 	if len(m.filtered) != 1 {
-		t.Errorf("expected 1 match for 'java', got %d", len(m.filtered))
+		t.Errorf("expected 1 match for 'code search', got %d", len(m.filtered))
 	}
-	if m.filtered[0].Category != CatJava {
-		t.Errorf("expected CatJava, got %v", m.filtered[0].Category)
+	if m.filtered[0].Category != CatCore {
+		t.Errorf("expected CatCore, got %v", m.filtered[0].Category)
 	}
 
 	// 2. Filter by "tunnel"

@@ -11,6 +11,7 @@ import (
 // NewSearchCmd handles folder-based parallel code and directory search
 func NewSearchCmd(app *AppContext) *cobra.Command {
 	var searchPaths []string
+	var searchPathsPlural []string
 	var searchRegex bool
 	var searchCaseSensitive bool
 	var searchWholeWord bool
@@ -50,9 +51,16 @@ func NewSearchCmd(app *AppContext) *cobra.Command {
 				cAfter = searchContext
 			}
 
+			var paths []string
+			paths = append(paths, searchPaths...)
+			paths = append(paths, searchPathsPlural...)
+			if len(paths) == 0 {
+				paths = []string{"."}
+			}
+
 			opts := search.SearchOptions{
 				Query:         args[0],
-				Paths:         searchPaths,
+				Paths:         paths,
 				IsRegex:       searchRegex,
 				CaseSensitive: searchCaseSensitive,
 				WholeWord:     searchWholeWord,
@@ -78,7 +86,8 @@ func NewSearchCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
-	searchCmd.Flags().StringSliceVarP(&searchPaths, "path", "p", []string{"."}, "Path(s) to search")
+	searchCmd.Flags().StringSliceVarP(&searchPaths, "path", "p", nil, "Path(s) to search")
+	searchCmd.Flags().StringSliceVar(&searchPathsPlural, "paths", nil, "Path(s) to search (alias for --path)")
 	searchCmd.Flags().BoolVarP(&searchRegex, "regex", "r", false, "Enable regular expression search")
 	searchCmd.Flags().BoolVarP(&searchCaseSensitive, "case-sensitive", "s", false, "Perform case-sensitive search (defaults to case-insensitive)")
 	searchCmd.Flags().BoolVarP(&searchWholeWord, "word", "w", false, "Match only whole words")

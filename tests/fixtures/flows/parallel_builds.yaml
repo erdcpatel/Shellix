@@ -1,15 +1,15 @@
 name: full-stack-parallel-build
-description: Demonstrates parallel execution of Java and Go compile steps
+description: Demonstrates parallel execution of backend and Go compile steps
 steps:
   - name: prep-workspace
     run: echo "Pre-build health check on branch {{git.branch}}"
 
-  - name: build-java-service
-    run: ./bin/sx java run tests/fixtures/HelloShellix.java "service=backend" "env=staging"
+  - name: build-backend-service
+    run: echo "Compiling backend services..."
     parallel: true
 
   - name: build-go-workbench
-    run: go test -v ./internal/java/...
+    run: go test -v ./internal/core/...
     parallel: true
 
   - name: parallel-search-audit

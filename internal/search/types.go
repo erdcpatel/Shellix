@@ -62,4 +62,5 @@ type SearchSummary struct {
 	Matches            []MatchResult   `json:"matches"`
 	UniqueFiles        []string        `json:"unique_files,omitempty"`
 	UniqueDirs         []string        `json:"unique_dirs,omitempty"`
+	Warnings           []string        `json:"warnings,omitempty"`
 }

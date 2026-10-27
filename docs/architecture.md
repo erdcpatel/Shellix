@@ -22,7 +22,6 @@ graph TD
     
     CLI --> GitCmd["internal/cli/git.go"] --> GitEngine["internal/git (Dual-Engine Git)"]
     CLI --> FlowCmd["internal/cli/flow.go"] --> FlowEngine["internal/flow (Parallel Automation Engine)"]
-    CLI --> JavaCmd["internal/cli/java.go"] --> JavaEngine["internal/java (Java Toolchain & Builds)"]
     CLI --> SSHCmd["internal/cli/ssh.go"] --> SSHEngine["internal/ssh (crypto/ssh Multi-Exec)"]
     CLI --> SearchCmd["internal/cli/search.go"] --> SearchEngine["internal/search (Parallel Search)"]
     CLI --> ShortcutsCmd["internal/cli/shortcuts.go"] --> ShortcutsEngine["internal/shortcuts (BM & Snippets)"]
@@ -85,7 +84,7 @@ graph TD
 - Full-screen interactive GitHub TUI Dashboard (`sx gh` / `sx github`) with multi-tab PRs, Issues, and CI inspection.
 
 ### 3.8 Universal Command Palette (`internal/palette`)
-- Unified fuzzy launcher aggregating all workflows, JDK versions, SSH profiles, bookmarks, snippets, history runs, and workbench superpowers.
+- Unified fuzzy launcher aggregating all workflows, SSH profiles, bookmarks, snippets, history runs, and workbench superpowers.
 - Keyboard-driven interactive selection with category badges and instant execution.
 
 ### 3.9 Interactive Git Branch & Stash Manager (`internal/git`)

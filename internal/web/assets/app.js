@@ -537,10 +537,17 @@
   function initSearchView() {
     const searchBtn = document.getElementById('executeSearchBtn');
     const queryInput = document.getElementById('searchQueryInput');
+    const scopeInput = document.getElementById('searchScopeInput');
     const extInput = document.getElementById('searchExtInput');
 
     searchBtn?.addEventListener('click', performSearch);
     queryInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') performSearch();
+    });
+    scopeInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') performSearch();
+    });
+    extInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') performSearch();
     });
   }
@@ -559,6 +566,10 @@
     const url = `/api/search?q=${encodeURIComponent(q)}&scope=${encodeURIComponent(scope)}&ext=${encodeURIComponent(ext)}&by_dir=true`;
     const data = await fetchJSON(url);
     if (!data) return;
+
+    if (data.warnings && data.warnings.length > 0) {
+      data.warnings.forEach((w) => showToast(w, 'warning'));
+    }
 
     state.search.results = data;
     renderSearchResults(data);

@@ -3,6 +3,7 @@ package search
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -64,6 +65,19 @@ func (e *Engine) Search(opts SearchOptions) (*SearchSummary, error) {
 	if len(opts.Paths) == 0 {
 		opts.Paths = []string{"."}
 	}
+
+	var validPaths []string
+	var warnings []string
+	for _, p := range opts.Paths {
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			warnings = append(warnings, fmt.Sprintf("Search path does not exist: %s", p))
+		} else if err != nil {
+			warnings = append(warnings, fmt.Sprintf("Error accessing search path %s: %v", p, err))
+		} else {
+			validPaths = append(validPaths, p)
+		}
+	}
+
 	if opts.MaxFileSize == 0 {
 		opts.MaxFileSize = 5 * 1024 * 1024 // 5 MB
 	}
@@ -109,7 +123,7 @@ func (e *Engine) Search(opts SearchOptions) (*SearchSummary, error) {
 
 	// 2. Walk directories in background
 	go func() {
-		for _, root := range opts.Paths {
+		for _, root := range validPaths {
 			giPatterns := loadGitignorePatterns(root)
 
 			_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -192,6 +206,7 @@ func (e *Engine) Search(opts SearchOptions) (*SearchSummary, error) {
 
 	// 4. Build Aggregation Summary
 	summary := aggregateResults(opts.Query, allMatches, int(filesCount), len(scannedDirs), duration)
+	summary.Warnings = warnings
 
 	// 5. Generate and write report if requested
 	if opts.ReportFile != "" {

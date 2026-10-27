@@ -19,6 +19,13 @@ func PrintResults(summary *SearchSummary, opts SearchOptions) {
 	contextNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
 	matchStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF79C6")).Background(lipgloss.Color("#282A36"))
 
+	if len(summary.Warnings) > 0 {
+		warnStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFA500"))
+		for _, w := range summary.Warnings {
+			fmt.Printf("%s %s\n", warnStyle.Render("▲ Warning:"), w)
+		}
+	}
+
 	if summary.TotalMatches == 0 {
 		fmt.Printf("No matches found for '%s' in %s (%d files, %d folders searched)\n",
 			opts.Query, metaStyle.Render(summary.DurationStr), summary.TotalFilesSearched, summary.TotalDirsScanned)

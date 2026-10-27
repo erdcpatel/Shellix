@@ -30,7 +30,6 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 			fmt.Println("  • sx flow          List and run automation flows with parallel builds")
 			fmt.Println("  • sx palette       Universal fuzzy command palette across all tools")
 			fmt.Println("  • sx history       Search execution history & view command statistics")
-			fmt.Println("  • sx java ls       List all discovered JDKs & switch JAVA_HOME")
 			fmt.Println("  • sx search <q>    High-speed parallel code search (.gitignore-aware)")
 			fmt.Println("  • sx doctor        Comprehensive system health & environment diagnostics")
 			fmt.Println("  • sx vault info    Inspect native OS Credential Manager")
@@ -69,7 +68,6 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 		NewCICmd(app),
 		NewIssueCmd(app),
 		NewFlowCmd(app),
-		NewJavaCmd(app),
 		NewSSHCmd(app),
 		NewVaultCmd(app),
 		NewEnvCmd(app),

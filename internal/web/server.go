@@ -26,7 +26,6 @@ import (
 	"shellix/internal/flow"
 	"shellix/internal/git"
 	"shellix/internal/httpclient"
-	"shellix/internal/java"
 	"shellix/internal/jsonview"
 	"shellix/internal/search"
 )
@@ -576,35 +575,7 @@ func (s *Server) handleAPIDoctor(w http.ResponseWriter, r *http.Request) {
 		Detail:   s.config.Workspace,
 	})
 
-	// 3. Java Ecosystem
-	javaEnv, _ := java.DetectEnvironment(s.config.Workspace)
-	if javaEnv != nil && javaEnv.JavaVersion != "" {
-		checks = append(checks, DiagnosticItem{
-			Category: "Java Multi-JDK Ecosystem",
-			Name:     "Java Runtime",
-			Status:   "pass",
-			Detail:   javaEnv.JavaVersion,
-		})
-	} else {
-		checks = append(checks, DiagnosticItem{
-			Category: "Java Multi-JDK Ecosystem",
-			Name:     "Java Runtime",
-			Status:   "warn",
-			Detail:   "No active JDK in PATH (optional)",
-		})
-	}
-
-	jh := os.Getenv("JAVA_HOME")
-	if jh != "" {
-		checks = append(checks, DiagnosticItem{
-			Category: "Java Multi-JDK Ecosystem",
-			Name:     "JAVA_HOME",
-			Status:   "pass",
-			Detail:   jh,
-		})
-	}
-
-	// 4. Security & Permissions
+	// 3. Security & Permissions
 	home, _ := os.UserHomeDir()
 	configDir := filepath.Join(home, ".shellix")
 	if _, err := os.Stat(configDir); err == nil {

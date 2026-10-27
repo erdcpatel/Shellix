@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"shellix/internal/history"
-	"shellix/internal/java"
 	"shellix/internal/shortcuts"
 	"shellix/internal/ssh"
 )
@@ -50,7 +49,7 @@ func CollectAllActions(histStore *history.Store, scMgr *shortcuts.Manager, sshMg
 		{
 			ID:          "core-doctor",
 			Title:       "System Diagnostics (sx doctor)",
-			Description: "Inspect Git, Keyring, JDKs, and SSH hardening",
+			Description: "Inspect Git, Keyring, and SSH hardening",
 			Category:    CatCore,
 			Command:     "sx doctor",
 		},
@@ -95,19 +94,7 @@ func CollectAllActions(histStore *history.Store, scMgr *shortcuts.Manager, sshMg
 		}
 	}
 
-	// 3. Java JDKs
-	jdks, _ := java.DiscoverAllJDKs()
-	for _, jdk := range jdks {
-		actions = append(actions, PaletteAction{
-			ID:          fmt.Sprintf("java-%s", jdk.Version),
-			Title:       fmt.Sprintf("Switch to Java %d (%s)", jdk.Major, jdk.Vendor),
-			Description: fmt.Sprintf("Export JAVA_HOME to %s", jdk.HomePath),
-			Category:    CatJava,
-			Command:     fmt.Sprintf("sx java use %d", jdk.Major),
-		})
-	}
-
-	// 4. SSH Profiles
+	// 3. SSH Profiles
 	if sshMgr != nil {
 		hosts := sshMgr.ListHosts()
 		for _, p := range hosts {

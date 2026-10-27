@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"shellix/internal/core"
-	"shellix/internal/java"
 	"shellix/internal/vault"
 
 	"github.com/charmbracelet/lipgloss"
@@ -93,30 +92,7 @@ func runDoctorDiagnostics(app *AppContext) {
 		check("git", "In-Process Worktree", false, true, "Not inside a git repository")
 	}
 
-	// 3. Java Toolchain
-	fmt.Println()
-	fmt.Println(sectionStyle.Render("☕ Java Multi-JDK Ecosystem"))
-	jh := os.Getenv("JAVA_HOME")
-	check("java", "JAVA_HOME Defined", jh != "", true, jh)
-
-	detectedJDKs, _ := java.DiscoverAllJDKs()
-	if len(detectedJDKs) > 0 {
-		var jdkNames []string
-		for _, j := range detectedJDKs {
-			jdkNames = append(jdkNames, fmt.Sprintf("v%d (%s)", j.Major, j.Vendor))
-		}
-		check("java", "Installed JDKs Detected", true, false, fmt.Sprintf("%d installations found: %s", len(detectedJDKs), strings.Join(jdkNames, ", ")))
-	} else {
-		check("java", "Installed JDKs Detected", false, true, "No local JDK installations located")
-	}
-
-	mvnPath, err := exec.LookPath("mvn")
-	check("java", "Apache Maven (mvn)", err == nil, true, mvnPath)
-
-	gradlePath, err := exec.LookPath("gradle")
-	check("java", "Gradle Build Tool", err == nil, true, gradlePath)
-
-	// 4. Security & OS Keyring
+	// 3. Security & OS Keyring
 	fmt.Println()
 	fmt.Println(sectionStyle.Render("🔒 Security, Keyring & Permissions"))
 	v := vault.NewVault("")
@@ -150,7 +126,7 @@ func runDoctorDiagnostics(app *AppContext) {
 		check("security", "Config Storage Dir", false, false, "Cannot access ~/.shellix")
 	}
 
-	// 5. SSH & Known Hosts
+	// 4. SSH & Known Hosts
 	fmt.Println()
 	fmt.Println(sectionStyle.Render("🔑 SSH & Known Hosts Hardening"))
 	knownHostsFile := filepath.Join(home, ".ssh", "known_hosts")
@@ -173,7 +149,7 @@ func runDoctorDiagnostics(app *AppContext) {
 		check("ssh", "Private SSH Key", false, true, "No standard id_ed25519 or id_rsa keys found in ~/.ssh")
 	}
 
-	// 6. Workflow Engine
+	// 5. Workflow Engine
 	fmt.Println()
 	fmt.Println(sectionStyle.Render("⚡ Automation Flow Engine"))
 	flowsDir := filepath.Join(shellixHome, "flows")

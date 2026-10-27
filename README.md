@@ -43,19 +43,15 @@ Sub-2ms Git inspection directly from disk:
 Run declarative pipelines with parallel step execution and audit logging:
 ![Flow Engine](docs/images/02_shellix_flow.png)
 
-### 3. Parallel Java & Multi-Module Builds
-Run Java and Go builds concurrently in a single flow:
+### 3. Parallel Multi-Module Builds
+Run parallel compile and verification steps concurrently in a single flow:
 ![Parallel Builds](docs/images/07_shellix_parallel_builds.png)
 
-### 4. Java Multi-Version Discovery & Switching
-Discover all installed JDKs (Adoptium, Corretto, Temurin, Homebrew) and switch seamlessly:
-![Java Version Manager](docs/images/09_shellix_java_list.png)
-
-### 5. Native OS Credential Manager (Vault)
+### 4. Native OS Credential Manager (Vault)
 Zero-leak secrets backed by Windows Credential Manager and macOS Keychain:
 ![Vault](docs/images/10_shellix_vault_info.png)
 
-### 6. Multi-Repo Parallel Search
+### 5. Multi-Repo Parallel Search
 Search across multiple codebases with syntax-highlighted matching lines:
 ![Search Engine](docs/images/03_shellix_search.png)
 
@@ -78,83 +74,83 @@ sx issue create --title "..." # Create new issue
 sx ci                     # Check CI workflow runs for current branch
 ```
 
-### 8. System Doctor & Diagnostics
-Run deep environment health checks on Git, JDKs, Keyring, and SSH hardening:
+### 7. System Doctor & Diagnostics
+Run deep environment health checks on Git, Keyring, and SSH hardening:
 ![System Doctor](docs/images/12_shellix_doctor.png)
 
-### 9. SSH Port Forwarding Tunneling
+### 8. SSH Port Forwarding Tunneling
 Encrypted local port forwarding over SSH without third-party tools:
 ![SSH Tunnel](docs/images/16_shellix_ssh_tunnel.png)
 
-### 10. Rapid Developer Onboarding (`sx init`)
+### 9. Rapid Developer Onboarding (`sx init`)
 Initialize ~/.shellix storage, secure permissions, and instant shell aliases:
 ![Shellix Init](docs/images/15_shellix_init.png)
 
-### 11. Developer Shortcuts
+### 10. Developer Shortcuts
 Manage directory bookmarks and reusable command snippets:
 ![Shortcuts](docs/images/04_shellix_shortcuts.png)
 
-### 12. Interactive Flow TUI (`sx flow run --tui`)
+### 11. Interactive Flow TUI (`sx flow run --tui`)
 Full-screen Bubble Tea dashboard with real-time spinners, live log streaming, and step progress:
 ![Interactive Flow TUI](docs/images/18_shellix_flow_tui.png)
 
-### 13. Command History & Execution Analytics (`sx history`)
+### 12. Command History & Execution Analytics (`sx history`)
 In-memory searchable command history with deduplication, latency metrics, and success rates:
 ![Command History](docs/images/19_shellix_history.png)
 
-### 14. Interactive GitHub Workbench (`sx gh`)
+### 13. Interactive GitHub Workbench (`sx gh`)
 Multi-tab TUI for Pull Requests, Issues, and CI checks across public and Enterprise GitHub:
 ![GitHub Workbench](docs/images/20_shellix_github_tui.png)
 
-### 15. Universal Command Palette (`sx palette`)
-Fuzzy command launcher connecting flows, Java runtimes, SSH profiles, bookmarks, and history:
+### 14. Universal Command Palette (`sx palette`)
+Fuzzy command launcher connecting flows, SSH profiles, bookmarks, and history:
 ![Command Palette](docs/images/21_shellix_palette.png)
 
-### 16. Flow Automated File Watcher (`sx flow watch`)
+### 15. Flow Automated File Watcher (`sx flow watch`)
 Continuous test-driven development loop that auto-runs pipelines upon file modifications:
 ![Flow Watcher](docs/images/22_shellix_flow_watch.png)
 
-### 17. Interactive Git Branch Switcher (`sx branch`)
+### 16. Interactive Git Branch Switcher (`sx branch`)
 Fuzzy branch selector with ahead/behind status, commit summaries, and instant checkout:
 ![Branch Switcher](docs/images/23_shellix_git_branch.png)
 
-### 18. Live Workflow Recorder (`sx flow record`)
+### 17. Live Workflow Recorder (`sx flow record`)
 Interactively record shell commands and automatically synthesize declarative YAML workflows:
 ![Flow Recorder](docs/images/24_shellix_flow_record.png)
 
-### 19. HTTP & API Terminal Client (`sx http` / `sx api`)
+### 18. HTTP & API Terminal Client (`sx http` / `sx api`)
 High-precision HTTP client with sub-millisecond network timing metrics (DNS, TCP, TLS, TTFB), automatic JSON detection, and side-by-side API endpoint diffing:
 ![HTTP Diff](docs/images/25_shellix_http_diff.png)
 
-### 20. Project Environment & Secret Injection (`sx env` / `.env.vault`)
+### 19. Project Environment & Secret Injection (`sx env` / `.env.vault`)
 Hardware-backed AES-256-GCM encrypted local environment store with automatic key management via OS Credential Vault (Windows Credential Manager / macOS Keychain) and secret-masked child process execution:
 ![Env Vault](docs/images/26_shellix_env_vault.png)
 
-### 21. Flow Cron & Recurring Scheduler (`sx flow schedule`)
+### 20. Flow Cron & Recurring Scheduler (`sx flow schedule`)
 Standard 5-field cron automation scheduler with macros (`@hourly`, `@daily`, `@weekly`), next trigger calculations, state tracking, and background daemon runner:
 ![Flow Cron](docs/images/27_shellix_flow_cron.png)
 
-### 22. Streaming Large File & JSON Diff Engine (`sx json` / `sx view`)
+### 21. Streaming Large File & JSON Diff Engine (`sx json` / `sx view`)
 High-throughput streaming viewer for multi-gigabyte logs (with chunked reverse tail seek) and JSONPath querying (`.data.items[0]`) with deep schema structural diffing:
 ![JSON Diff](docs/images/28_shellix_json_diff.png)
 
-### 23. Windows PowerShell Dynamic Auto-Completion & Auto-Hook (`sx completion` & `sx env hook`)
+### 22. Windows PowerShell Dynamic Auto-Completion & Auto-Hook (`sx completion` & `sx env hook`)
 First-class Windows developer experience: dynamic tab completion across flows, secret keys, git branches, and saved SSH hosts, paired with `direnv`-style auto-loading prompt hooks:
 ![Windows PowerShell Integration](docs/images/29_shellix_powershell_completion.png)
 
-### 24. Interactive Collapsible JSON Tree Explorer (`sx json tui`) & API Assertions
+### 23. Interactive Collapsible JSON Tree Explorer (`sx json tui`) & API Assertions
 Interactive keyboard-driven tree browser for nested payloads with real-time fuzzy filtering (`/`), expand/collapse (`Enter`/`e`/`c`), and automated API health check assertions (`--assert-status`, `--assert-json`):
 ![Interactive JSON TUI](docs/images/30_shellix_json_tui.png)
 
-### 25. Workflow Execution Blueprint, Approval Gates & Artifact Preservation (`sx flow plan` & `sx flow artifacts`)
+### 24. Workflow Execution Blueprint, Approval Gates & Artifact Preservation (`sx flow plan` & `sx flow artifacts`)
 Preview DAG execution waves, parameter overrides (`--set key=val`), and step dependencies without running side effects. Export Mermaid flowcharts (`--mermaid`), guard production deployments with interactive approval gates (`prompt:`), preserve build artifacts in `~/.shellix/artifacts/`, and receive native desktop alerts (`notify:`) on Windows BalloonTip/Toast and macOS:
 ![Workflow Execution Plan](docs/images/31_shellix_flow_plan.png)
 
-### 26. Pure-Local Folder Search, Directory Rollup & Audit Reports (`sx search --by-dir --report`)
+### 25. Pure-Local Folder Search, Directory Rollup & Audit Reports (`sx search --by-dir --report`)
 Blazing-fast multi-threaded search across hundreds of checked-out folders without network or Git dependencies. Generates top-level directory rollup summary tables, surrounding context lines (`-C`), extension filters (`--ext`), script-friendly directory listing (`--dirs-only`), and automated Markdown checklist, JSON, and CSV reports:
 ![Directory Search Report](docs/images/32_shellix_search_report.png)
 
-### 27. Zero-Latency Embedded Web Workbench (`sx web`)
+### 26. Zero-Latency Embedded Web Workbench (`sx web`)
 Instant, zero-dependency browser workbench embedded directly inside the single Go binary (`//go:embed`). Features a sleek Linear/Vercel modern dark theme, side-by-side split diff reviewer, high-performance in-memory virtual data grid with client-side caching, visual workflow DAG waves, pure-local search explorer, and command palette (`Cmd/Ctrl+K`):
 ![Web Workbench](docs/images/33_shellix_web_workbench.png)
 
@@ -169,7 +165,7 @@ Instant, zero-dependency browser workbench embedded directly inside the single G
    - Single-binary embedded local web console (`sx web`) booting in $< 3\text{ ms}$ with zero Node/npm/Docker dependencies.
    - Modular layout supporting side-by-side code reviews, high-performance cached virtual data grids, visual automation waves, and instant multi-folder search.
 3. **Shellix Flows (Automation Engine)**:
-   - Declarative YAML workflows to automate builds, tests, releases, and local pipelines (pure local Go compiler, Java Maven/Gradle, Git, and test runners—zero Docker required).
+   - Declarative YAML workflows to automate builds, tests, releases, and local pipelines (pure local Go compiler, Git, and test runners—zero Docker required).
    - Support for sequential and parallel execution waves, dependency DAGs (`depends_on`), conditional step execution (`if:`), timeouts with exponential backoff, parameterization (`params` & `--set`), interactive approval gates (`prompt:`), artifact preservation (`artifacts:` & `sx flow artifacts`), dry-run execution blueprinting (`sx flow plan`), Mermaid architecture exports (`--mermaid`), and desktop/webhook notifications (`notify:`).
 3. **High-Throughput Folder & Code Search**:
    - High-throughput parallel file tree walking and regex/literal searching across hundreds of local project folders simultaneously.
@@ -268,7 +264,6 @@ sx ps                                # Inspect active daemons, PIDs, uptimes & h
 - [Dual-Engine Git & Interactive TUI](docs/git-engine.md)
 - [GitHub Integration (HTTPS + PAT)](docs/github.md)
 - [Shellix Flows Automation & Parallel Builds](docs/flows.md)
-- [Java Toolchain & Multi-Version Manager](docs/java.md)
 - [Native OS Credential Manager (Vault)](docs/vault.md)
 - [SSH Multi-Server Manager](docs/ssh.md)
 - [Multi-Repo Search Engine](docs/search.md)
