@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"unsafe"
 )
@@ -84,7 +85,22 @@ func RunShell(customShell string) error {
 	restoreIn := enableVTInput(syscall.Handle(os.Stdin.Fd()))
 	defer restoreIn()
 
-	cmd := exec.Command(shell)
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = os.Args[0]
+	}
+	if abs, err := filepath.Abs(exePath); err == nil {
+		exePath = abs
+	}
+
+	var extraPaths []string
+	if gitDir := DiscoverWindowsGit(); gitDir != "" {
+		extraPaths = append(extraPaths, gitDir)
+	}
+
+	args := buildShellArgs(shell, exePath)
+	cmd := exec.Command(shell, args...)
+	cmd.Env = BuildShellEnvironment(os.Environ(), exePath, extraPaths...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

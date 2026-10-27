@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"shellix/internal/core"
+	"shellix/internal/session"
+	"shellix/internal/terminal"
 
 	"github.com/spf13/cobra"
 )
@@ -13,13 +15,16 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:     "shellix",
 		Aliases: []string{"sx", "slx"},
+		Version: core.GetVersion(),
 		Short:   "Shellix — Blazing-fast developer terminal workbench",
 		Long:    core.Banner() + "\nA high-performance developer terminal workbench with instant Git engine, automation flows, and productivity tools.",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Print(core.Banner())
 			fmt.Println()
-			_ = app.GitEngine.PrintStatus("")
-			fmt.Println()
+			if app != nil && app.GitEngine != nil {
+				_ = app.GitEngine.PrintStatus("")
+				fmt.Println()
+			}
 			fmt.Println("⚡ Quick Superpowers:")
 			fmt.Println("  • sx g             Launch interactive Git TUI dashboard (staging & diffs)")
 			fmt.Println("  • sx flow          List and run automation flows with parallel builds")
@@ -31,6 +36,24 @@ func NewRootCmd(app *AppContext) *cobra.Command {
 			fmt.Println("  • sx vault info    Inspect native OS Credential Manager")
 			fmt.Println("  • sx shell         Launch interactive subshell with VT processing")
 			fmt.Println("\nRun 'sx --help' (or 'slx --help') for the complete command tree.")
+			fmt.Println()
+
+			defaultShell := ""
+			if app != nil && app.Config != nil {
+				defaultShell = app.Config.Shell.Default
+			}
+
+			runner := terminal.RunShell
+			if app != nil && app.ShellRunner != nil {
+				runner = app.ShellRunner
+			}
+
+			if app != nil && app.SessionMgr != nil {
+				s := app.SessionMgr.RegisterSession("Interactive Shell", session.SessionLocal, defaultShell)
+				defer func() { _ = app.SessionMgr.CloseSession(s.ID) }()
+			}
+
+			return runner(defaultShell)
 		},
 	}
 

@@ -44,9 +44,19 @@ func NewShellCmd(app *AppContext) *cobra.Command {
 		Use:   "shell",
 		Short: "Launch interactive PTY shell",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := app.SessionMgr.RegisterSession("Local Shell", session.SessionLocal, app.Config.Shell.Default)
-			defer func() { _ = app.SessionMgr.CloseSession(s.ID) }()
-			return terminal.RunShell(app.Config.Shell.Default)
+			defaultShell := ""
+			if app != nil && app.Config != nil {
+				defaultShell = app.Config.Shell.Default
+			}
+			runner := terminal.RunShell
+			if app != nil && app.ShellRunner != nil {
+				runner = app.ShellRunner
+			}
+			if app != nil && app.SessionMgr != nil {
+				s := app.SessionMgr.RegisterSession("Local Shell", session.SessionLocal, defaultShell)
+				defer func() { _ = app.SessionMgr.CloseSession(s.ID) }()
+			}
+			return runner(defaultShell)
 		},
 	}
 }

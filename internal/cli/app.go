@@ -20,6 +20,7 @@ type AppContext struct {
 	SSHMgr       *ssh.ProfileManager
 	SessionMgr   *session.Manager
 	HistoryStore *history.Store
+	ShellRunner  func(string) error
 }
 
 // NewAppContext constructs the core application context

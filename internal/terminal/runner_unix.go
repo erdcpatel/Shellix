@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -30,7 +31,16 @@ func resolveUnixShell(customShell string) string {
 func RunShell(customShell string) error {
 	shell := resolveUnixShell(customShell)
 
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = os.Args[0]
+	}
+	if abs, err := filepath.Abs(exePath); err == nil {
+		exePath = abs
+	}
+
 	cmd := exec.Command(shell)
+	cmd.Env = BuildShellEnvironment(os.Environ(), exePath)
 
 	// Start the command with a pty
 	ptmx, err := pty.Start(cmd)
